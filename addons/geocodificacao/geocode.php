@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -24,14 +23,14 @@ if (!in_array($action, $publicActions, true) && empty($_SESSION['MKA_Logado']) &
 }
 
 $cfg = require __DIR__ . '/config.php';
-function respond(array $data, int $status = 200): void
+function respond($data, $status = 200)
 {
     http_response_code($status);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
 
-function httpJson(string $url, string $userAgent): array
+function httpJson($url, $userAgent)
 {
     $ch = curl_init($url);
     curl_setopt_array($ch, array(
@@ -58,11 +57,11 @@ function httpJson(string $url, string $userAgent): array
 
 try {
     if ($action === 'photon') {
-        $query = trim((string) ($_GET['q'] ?? ''));
+        $query = trim((string) (isset($_GET['q']) ? $_GET['q'] : ''));
         if (mb_strlen($query, 'UTF-8') < 3 || mb_strlen($query, 'UTF-8') > 256) {
             respond(array('ok' => false, 'error' => 'Digite entre 3 e 256 caracteres.'), 422);
         }
-        $cacheDir = (string) ($cfg['cache_dir'] ?? (sys_get_temp_dir() . '/mkauth-geocodificacao'));
+        $cacheDir = (string) (isset($cfg['cache_dir']) ? $cfg['cache_dir'] : (sys_get_temp_dir() . '/mkauth-geocodificacao'));
         if (!is_dir($cacheDir)) @mkdir($cacheDir, 0770, true);
         $cacheFile = $cacheDir . '/photon-' . hash('sha256', mb_strtolower($query, 'UTF-8')) . '.json';
         if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < (int) $cfg['cache_ttl']) {
@@ -82,7 +81,7 @@ try {
     }
 
     if ($action === 'cep') {
-        $cep = preg_replace('/\D+/', '', (string) ($_GET['cep'] ?? ''));
+        $cep = preg_replace('/\D+/', '', (string) (isset($_GET['cep']) ? $_GET['cep'] : ''));
         if (strlen($cep) !== 8) {
             respond(array('ok' => false, 'error' => 'CEP deve conter 8 digitos.'), 422);
         }
@@ -94,9 +93,9 @@ try {
     }
 
     if ($action === 'address') {
-        $uf = strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($_GET['uf'] ?? '')));
-        $city = trim((string) ($_GET['city'] ?? ''));
-        $street = trim((string) ($_GET['street'] ?? ''));
+        $uf = strtoupper(preg_replace('/[^A-Za-z]/', '', (string) (isset($_GET['uf']) ? $_GET['uf'] : '')));
+        $city = trim((string) (isset($_GET['city']) ? $_GET['city'] : ''));
+        $street = trim((string) (isset($_GET['street']) ? $_GET['street'] : ''));
         if (strlen($uf) !== 2 || mb_strlen($city, 'UTF-8') < 3 || mb_strlen($street, 'UTF-8') < 3) {
             respond(array('ok' => false, 'error' => 'Informe UF, cidade e logradouro.'), 422);
         }
@@ -107,26 +106,28 @@ try {
         respond(array('ok' => true, 'results' => array_slice($data, 0, 20)));
     }
 
-    $number = trim((string) ($_GET['numero'] ?? ''));
+    $number = trim((string) (isset($_GET['numero']) ? $_GET['numero'] : ''));
     $numberForQuery = preg_match('/^0+$/', $number) ? '' : $number;
     $parts = array(
-        trim((string) ($_GET['endereco'] ?? '')),
+        trim((string) (isset($_GET['endereco']) ? $_GET['endereco'] : '')),
         $numberForQuery,
-        trim((string) ($_GET['bairro'] ?? '')),
-        trim((string) ($_GET['cidade'] ?? '')),
-        trim((string) ($_GET['estado'] ?? '')),
-        preg_replace('/\D+/', '', (string) ($_GET['cep'] ?? '')),
+        trim((string) (isset($_GET['bairro']) ? $_GET['bairro'] : '')),
+        trim((string) (isset($_GET['cidade']) ? $_GET['cidade'] : '')),
+        trim((string) (isset($_GET['estado']) ? $_GET['estado'] : '')),
+        preg_replace('/\D+/', '', (string) (isset($_GET['cep']) ? $_GET['cep'] : '')),
         'Brasil',
     );
     if ($parts[0] === '' || $number === '' || $parts[3] === '' || strlen($parts[4]) !== 2) {
         respond(array('ok' => false, 'error' => 'Informe logradouro, numero, cidade e UF.'), 422);
     }
-    $query = implode(', ', array_values(array_filter($parts, static fn($v) => $v !== '')));
+    $query = implode(', ', array_values(array_filter($parts, function ($value) {
+        return $value !== '';
+    })));
     if (strlen($query) > 500) {
         respond(array('ok' => false, 'error' => 'Endereco muito longo.'), 422);
     }
 
-    $cacheDir = (string) ($cfg['cache_dir'] ?? (sys_get_temp_dir() . '/mkauth-geocodificacao'));
+    $cacheDir = (string) (isset($cfg['cache_dir']) ? $cfg['cache_dir'] : (sys_get_temp_dir() . '/mkauth-geocodificacao'));
     if (!is_dir($cacheDir)) {
         @mkdir($cacheDir, 0770, true);
     }
@@ -172,13 +173,13 @@ try {
         $results[] = array(
             'lat' => number_format((float) $lat, 7, '.', ''),
             'lon' => number_format((float) $lon, 7, '.', ''),
-            'label' => (string) ($item['display_name'] ?? $query),
+            'label' => (string) (isset($item['display_name']) ? $item['display_name'] : $query),
         );
     }
     $payload = array('ok' => true, 'query' => $query, 'results' => $results, 'cached' => false, 'approximate' => ($numberForQuery === ''));
     @file_put_contents($cacheFile, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
     respond($payload);
-} catch (Throwable $e) {
+} catch (Exception $e) {
     error_log('[mka-geocodificacao] ' . get_class($e) . ': ' . $e->getMessage());
     respond(array('ok' => false, 'error' => 'Falha temporaria ao consultar geocodificacao.'), 502);
 }
