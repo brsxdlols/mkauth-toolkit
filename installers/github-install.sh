@@ -18,16 +18,20 @@ fail() {
 [ "$(id -u)" -eq 0 ] || fail "execute como root"
 command -v curl >/dev/null 2>&1 || fail "curl nao encontrado"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum nao encontrado"
-[ -n "${GH_TOKEN:-}" ] || fail "variavel GH_TOKEN nao informada"
-
-AUTH_HEADER="Authorization: Bearer $GH_TOKEN"
 API_HEADER="Accept: application/vnd.github+json"
 VERSION_HEADER="X-GitHub-Api-Version: 2022-11-28"
 RELEASE_JSON="$WORK_DIR/release.json"
 
-echo "Consultando a ultima versao privada no GitHub..."
-curl -fsSL \
-    -H "$AUTH_HEADER" \
+githubCurl() {
+    if [ -n "${GH_TOKEN:-}" ]; then
+        curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "$@"
+    else
+        curl -fsSL "$@"
+    fi
+}
+
+echo "Consultando a ultima versao no GitHub..."
+githubCurl \
     -H "$API_HEADER" \
     -H "$VERSION_HEADER" \
     "$API_ROOT/releases/latest" > "$RELEASE_JSON" || fail "nao foi possivel consultar a Release"
@@ -50,13 +54,11 @@ RUN_FILE="$WORK_DIR/installer.run"
 SHA_FILE="$WORK_DIR/installer.run.sha256"
 
 echo "Baixando MK-AUTH Geocodificacao $TAG..."
-curl -fsSL \
-    -H "$AUTH_HEADER" \
+githubCurl \
     -H "Accept: application/octet-stream" \
     -H "$VERSION_HEADER" \
     "$API_ROOT/releases/assets/$RUN_ID" -o "$RUN_FILE" || fail "falha ao baixar o instalador"
-curl -fsSL \
-    -H "$AUTH_HEADER" \
+githubCurl \
     -H "Accept: application/octet-stream" \
     -H "$VERSION_HEADER" \
     "$API_ROOT/releases/assets/$SHA_ID" -o "$SHA_FILE" || fail "falha ao baixar a verificacao SHA-256"

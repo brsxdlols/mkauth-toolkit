@@ -19,7 +19,18 @@ Nenhuma chave Google ou credencial é armazenada neste repositório.
 
 ## Instalação
 
-### Direto do GitHub privado (recomendado)
+### Direto do GitHub público (recomendado)
+
+No MK-AUTH, como `root`, execute:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brsxdlols/mkauth-toolkit/main/installers/github-install.sh | sh
+```
+
+O instalador consulta a Release mais recente, baixa o arquivo `.run` e sua
+assinatura SHA-256, valida a integridade e instala com backup automático.
+
+### Repositório privado
 
 Crie um Fine-grained Personal Access Token limitado ao repositório
 `mkauth-toolkit`, apenas com a permissão **Contents: Read-only**. No MK-AUTH,
@@ -29,9 +40,6 @@ não fica salvo no histórico:
 ```bash
 read -rsp "Token GitHub: " GH_TOKEN; echo; T=$(mktemp); curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw+json" https://api.github.com/repos/brsxdlols/mkauth-toolkit/contents/installers/github-install.sh -o "$T" && GH_TOKEN="$GH_TOKEN" sh "$T"; R=$?; rm -f "$T"; unset GH_TOKEN T; (exit $R)
 ```
-
-O instalador consulta a Release mais recente, baixa o arquivo `.run` e sua
-assinatura SHA-256, valida a integridade e instala com backup automático.
 
 ### Clone autenticado
 
