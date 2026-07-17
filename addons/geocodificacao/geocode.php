@@ -1,12 +1,21 @@
 <?php
 
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
+$isCli = PHP_SAPI === 'cli';
+$workerJobId = '';
+if ($isCli && isset($argv)) {
+    foreach ($argv as $argument) {
+        if (strpos($argument, '--batch-job=') === 0) $workerJobId = substr($argument, 12);
+    }
+}
+if (!$isCli) {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+}
 
-$action = isset($_GET['action']) ? (string) $_GET['action'] : 'geocode';
+$action = $workerJobId !== '' ? 'batch_worker' : (isset($_GET['action']) ? (string) $_GET['action'] : 'geocode');
 $publicActions = array('photon', 'cep', 'address');
 
-if (!in_array($action, $publicActions, true) && session_status() !== PHP_SESSION_ACTIVE) {
+if (!$isCli && !in_array($action, $publicActions, true) && session_status() !== PHP_SESSION_ACTIVE) {
     $authenticatedSession = false;
     foreach ($_COOKIE as $cookieName => $cookieValue) {
         // O proxy pode prefixar o nome (ex.: _admin-<hash>-MKA). O valor
@@ -25,7 +34,7 @@ if (!in_array($action, $publicActions, true) && session_status() !== PHP_SESSION
         }
     }
 }
-if (!in_array($action, $publicActions, true) && empty($_SESSION['MKA_Logado']) && empty($_SESSION['mka_logado'])) {
+if (!$isCli && !in_array($action, $publicActions, true) && empty($_SESSION['MKA_Logado']) && empty($_SESSION['mka_logado'])) {
     http_response_code(401);
     echo json_encode(array('ok' => false, 'error' => 'Sessao nao autenticada. Atualize a pagina e entre novamente no MK-AUTH.'));
     exit;
@@ -34,9 +43,102 @@ if (!in_array($action, $publicActions, true) && empty($_SESSION['MKA_Logado']) &
 $cfg = require __DIR__ . '/config.php';
 function respond($data, $status = 200)
 {
+    if (PHP_SAPI === 'cli') {
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+        exit($status >= 400 ? 1 : 0);
+    }
     http_response_code($status);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
+}
+
+function batchJobsDir($cfg)
+{
+    $dir = (isset($cfg['cache_dir']) ? $cfg['cache_dir'] : sys_get_temp_dir()) . '/batch-jobs';
+    if (!is_dir($dir) && !@mkdir($dir, 0770, true)) throw new RuntimeException('Falha ao criar diretorio de trabalhos.');
+    return $dir;
+}
+
+function batchJobPath($cfg, $id)
+{
+    if (!preg_match('/^[a-f0-9]{32}$/', (string) $id)) throw new RuntimeException('Identificador de trabalho invalido.');
+    return batchJobsDir($cfg) . '/' . $id . '.json';
+}
+
+function readBatchJob($cfg, $id)
+{
+    $path = batchJobPath($cfg, $id);
+    if (!is_file($path)) throw new RuntimeException('Trabalho nao encontrado.');
+    $job = json_decode((string) @file_get_contents($path), true);
+    if (!is_array($job)) throw new RuntimeException('Estado do trabalho invalido.');
+    return $job;
+}
+
+function writeBatchJob($cfg, $job)
+{
+    $path = batchJobPath($cfg, $job['id']);
+    $tmp = $path . '.' . getmypid() . '.tmp';
+    $json = json_encode($job, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (@file_put_contents($tmp, $json, LOCK_EX) === false || !@rename($tmp, $path)) {
+        @unlink($tmp);
+        throw new RuntimeException('Falha ao salvar estado do trabalho.');
+    }
+}
+
+function processBatchClient($id, $cfg)
+{
+    $db = databaseConnection($cfg);
+    $result = $db->query("SELECT id,nome,login,cep,endereco,numero,bairro,cidade,estado,coordenadas FROM sis_cliente WHERE id=" . (int) $id . " LIMIT 1");
+    $row = $result ? $result->fetch_assoc() : null;
+    if (!$row) { $db->close(); throw new RuntimeException('Cliente nao encontrado.'); }
+    if (trim((string) $row['coordenadas']) !== '') { $db->close(); return array('status' => 'ignored', 'message' => 'Cliente ja possui coordenadas.'); }
+    $resolved = batchGeocodeClient($row, $cfg);
+    $stmt = $db->prepare("UPDATE sis_cliente SET coordenadas=? WHERE id=? AND TRIM(COALESCE(coordenadas,''))=''");
+    if (!$stmt) { $db->close(); throw new RuntimeException('Falha ao preparar atualizacao.'); }
+    $clientId = (int) $id;
+    $stmt->bind_param('si', $resolved['coordinates'], $clientId);
+    if (!$stmt->execute()) { $stmt->close(); $db->close(); throw new RuntimeException('Falha ao atualizar cliente.'); }
+    $updated = $stmt->affected_rows === 1;
+    $stmt->close(); $db->close();
+    return array('status' => $updated ? 'updated' : 'ignored', 'coordinates' => $resolved['coordinates'], 'precision' => $resolved['precision']);
+}
+
+function runBatchWorker($cfg, $jobId)
+{
+    $lockPath = batchJobsDir($cfg) . '/worker.lock';
+    $lock = fopen($lockPath, 'c+');
+    if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) return;
+    $job = readBatchJob($cfg, $jobId);
+    if (!in_array($job['status'], array('queued', 'waiting'), true)) { flock($lock, LOCK_UN); fclose($lock); return; }
+    $job['status'] = 'running'; $job['started_at'] = isset($job['started_at']) ? $job['started_at'] : date('c');
+    writeBatchJob($cfg, $job);
+    while ($job['current'] < $job['total']) {
+        $clientId = (int) $job['client_ids'][$job['current']];
+        try {
+            $result = processBatchClient($clientId, $cfg);
+            if ($result['status'] === 'updated') $job['updated']++; else $job['ignored']++;
+            $job['results'][] = array('id' => $clientId, 'status' => $result['status']);
+            $job['current']++; $job['rate_retries'] = 0; $job['status'] = 'running';
+        } catch (Exception $e) {
+            if (strpos($e->getMessage(), 'RATE_LIMIT:') === 0) {
+                $job['rate_retries'] = isset($job['rate_retries']) ? $job['rate_retries'] + 1 : 1;
+                $job['status'] = 'waiting'; $job['message'] = 'Aguardando o limite do OpenStreetMap; retomada automatica.';
+                writeBatchJob($cfg, $job);
+                sleep(900);
+                $job['status'] = 'running';
+                continue;
+            }
+            $job['failed']++;
+            $job['results'][] = array('id' => $clientId, 'status' => 'failed', 'error' => $e->getMessage());
+            if (count($job['results']) > 200) array_shift($job['results']);
+            $job['current']++;
+        }
+        $job['message'] = 'Processando ' . $job['current'] . ' de ' . $job['total'] . '.';
+        writeBatchJob($cfg, $job);
+    }
+    $job['status'] = 'completed'; $job['finished_at'] = date('c');
+    $job['message'] = 'Processamento concluido.'; writeBatchJob($cfg, $job);
+    flock($lock, LOCK_UN); fclose($lock);
 }
 
 function httpJson($url, $userAgent)
@@ -55,6 +157,9 @@ function httpJson($url, $userAgent)
     $error = curl_error($ch);
     curl_close($ch);
     if ($body === false || $status < 200 || $status >= 300) {
+        if ($status === 429) {
+            throw new RuntimeException('RATE_LIMIT: OpenStreetMap solicitou uma pausa nas consultas. Aguarde e tente novamente mais tarde.');
+        }
         throw new RuntimeException($error !== '' ? $error : 'Servico externo respondeu HTTP ' . $status);
     }
     $json = json_decode((string) $body, true);
@@ -136,6 +241,37 @@ function waitForNominatim($cfg)
     flock($lock, LOCK_UN); fclose($lock);
 }
 
+function nominatimSearch($query, $cfg, $allowRequest)
+{
+    $dir = (isset($cfg['cache_dir']) ? $cfg['cache_dir'] : sys_get_temp_dir()) . '/batch-address';
+    if (!is_dir($dir)) @mkdir($dir, 0770, true);
+    $cacheFile = $dir . '/' . sha1(normalizedText($query)) . '.json';
+    $ttl = isset($cfg['cache_ttl']) ? (int) $cfg['cache_ttl'] : 2592000;
+    if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $ttl) {
+        $cached = json_decode((string) @file_get_contents($cacheFile), true);
+        if (is_array($cached)) return $cached;
+    }
+    if (!$allowRequest) return null;
+    $cooldownFile = (isset($cfg['cache_dir']) ? $cfg['cache_dir'] : sys_get_temp_dir()) . '/nominatim-cooldown-until';
+    $cooldownUntil = is_file($cooldownFile) ? (int) trim((string) @file_get_contents($cooldownFile)) : 0;
+    if ($cooldownUntil > time()) {
+        throw new RuntimeException('RATE_LIMIT: OpenStreetMap esta em pausa ate ' . date('H:i', $cooldownUntil) . '.');
+    }
+    waitForNominatim($cfg);
+    try {
+        $raw = httpJson($cfg['nominatim_url'] . '?' . http_build_query(array(
+            'q' => $query, 'format' => 'jsonv2', 'addressdetails' => 1, 'countrycodes' => 'br', 'limit' => 5,
+        )), $cfg['user_agent']);
+    } catch (RuntimeException $e) {
+        if (strpos($e->getMessage(), 'RATE_LIMIT:') === 0) {
+            @file_put_contents($cooldownFile, (string) (time() + 900), LOCK_EX);
+        }
+        throw $e;
+    }
+    @file_put_contents($cacheFile, json_encode($raw, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+    return $raw;
+}
+
 function batchGeocodeClient($row, $cfg)
 {
     $cep = onlyDigits($row['cep']);
@@ -161,18 +297,17 @@ function batchGeocodeClient($row, $cfg)
     $query = implode(', ', array_values(array_filter($parts, function ($value) { return trim((string) $value) !== ''; })));
     if (trim((string) $street) !== '' && trim((string) $city) !== '') {
         try {
-            $streetParts = array($street, $district, $city, $state, $cep, 'Brasil');
-            $streetQuery = implode(', ', array_values(array_filter($streetParts, function ($value) { return trim((string) $value) !== ''; })));
             $cityStreetParts = array($street, $city, $state, 'Brasil');
             $cityStreetQuery = implode(', ', array_values(array_filter($cityStreetParts, function ($value) { return trim((string) $value) !== ''; })));
-            $queries = array($query);
-            if ($queryNumber !== '' && $streetQuery !== $query) $queries[] = $streetQuery;
-            if ($cityStreetQuery !== $streetQuery) $queries[] = $cityStreetQuery;
-            foreach ($queries as $queryIndex => $searchQuery) {
-                waitForNominatim($cfg);
-                $raw = httpJson($cfg['nominatim_url'] . '?' . http_build_query(array(
-                    'q' => $searchQuery, 'format' => 'jsonv2', 'addressdetails' => 1, 'countrycodes' => 'br', 'limit' => 5,
-                )), $cfg['user_agent']);
+            $cachedStreet = nominatimSearch($cityStreetQuery, $cfg, false);
+            $queries = is_array($cachedStreet)
+                ? array(array('query' => $cityStreetQuery, 'raw' => $cachedStreet, 'strict' => false, 'number' => false))
+                : array(
+                    array('query' => $query, 'raw' => null, 'strict' => true, 'number' => true),
+                    array('query' => $cityStreetQuery, 'raw' => null, 'strict' => false, 'number' => false),
+                );
+            foreach ($queries as $search) {
+                $raw = is_array($search['raw']) ? $search['raw'] : nominatimSearch($search['query'], $cfg, true);
                 $fallback = null;
                 foreach ($raw as $item) {
                     $foundCep = isset($item['address']['postcode']) ? onlyDigits($item['address']['postcode']) : '';
@@ -185,7 +320,7 @@ function batchGeocodeClient($row, $cfg)
                         if (isset($item['address'][$streetKey])) { $foundStreet = normalizedStreet($item['address'][$streetKey]); break; }
                     }
                     $expectedStreet = normalizedStreet($street);
-                    $strictCep = $queryIndex < (count($queries) - 1);
+                    $strictCep = $search['strict'];
                     if (!isset($item['lat'], $item['lon'])
                         || ($strictCep && $foundCep !== '' && $foundCep !== $cep)
                         || ($foundCity !== '' && $foundCity !== normalizedText($city))
@@ -194,7 +329,7 @@ function batchGeocodeClient($row, $cfg)
                     $lon = filter_var($item['lon'], FILTER_VALIDATE_FLOAT);
                     if ($lat === false || $lon === false) continue;
                     $candidate = array('coordinates' => number_format((float) $lat, 7, '.', '') . ',' . number_format((float) $lon, 7, '.', ''), 'precision' => 'rua');
-                    if ($queryIndex === 0 && $queryNumber !== '' && isset($item['address']['house_number']) && normalizedText($item['address']['house_number']) === normalizedText($queryNumber)) {
+                    if ($search['number'] && $queryNumber !== '' && isset($item['address']['house_number']) && normalizedText($item['address']['house_number']) === normalizedText($queryNumber)) {
                         $candidate['precision'] = 'numero';
                     }
                     if ($foundCep === $cep) return $candidate;
@@ -203,6 +338,7 @@ function batchGeocodeClient($row, $cfg)
                 if ($fallback !== null) return $fallback;
             }
         } catch (Exception $ignored) {
+            if (strpos($ignored->getMessage(), 'RATE_LIMIT:') === 0) throw $ignored;
             /* A referencia exata do CEP permanece como fallback seguro. */
         }
     }
@@ -210,6 +346,60 @@ function batchGeocodeClient($row, $cfg)
 }
 
 try {
+    if ($action === 'batch_worker') {
+        if (PHP_SAPI !== 'cli') throw new RuntimeException('Execucao invalida.');
+        runBatchWorker($cfg, $workerJobId);
+        exit(0);
+    }
+
+    if ($action === 'batch_start') {
+        batchRequestRequired();
+        $rawIds = isset($_POST['ids']) ? json_decode((string) $_POST['ids'], true) : array();
+        if (!is_array($rawIds)) respond(array('ok' => false, 'error' => 'Lista de clientes invalida.'), 422);
+        $ids = array();
+        foreach ($rawIds as $rawId) { $id = (int) $rawId; if ($id > 0) $ids[$id] = $id; }
+        $ids = array_values($ids);
+        if (!$ids || count($ids) > 1000 || !isset($_POST['confirm']) || $_POST['confirm'] !== '1') respond(array('ok' => false, 'error' => 'Confirmacao e clientes sao obrigatorios.'), 422);
+        foreach (glob(batchJobsDir($cfg) . '/*.json') as $existingPath) {
+            $existing = json_decode((string) @file_get_contents($existingPath), true);
+            if (is_array($existing) && in_array($existing['status'], array('queued', 'running', 'waiting'), true)) {
+                respond(array('ok' => false, 'error' => 'Ja existe uma atualizacao em segundo plano. Aguarde sua conclusao.'), 409);
+            }
+        }
+        $jobId = bin2hex(function_exists('random_bytes') ? random_bytes(16) : openssl_random_pseudo_bytes(16));
+        $job = array('id' => $jobId, 'status' => 'queued', 'created_at' => date('c'), 'started_at' => null, 'finished_at' => null,
+            'seen_at' => null, 'client_ids' => $ids, 'current' => 0, 'total' => count($ids), 'updated' => 0, 'ignored' => 0,
+            'failed' => 0, 'rate_retries' => 0, 'results' => array(), 'message' => 'Aguardando inicio.');
+        writeBatchJob($cfg, $job);
+        $php = is_executable('/usr/bin/php') ? '/usr/bin/php' : (defined('PHP_BINARY') && PHP_BINARY ? PHP_BINARY : 'php');
+        $command = 'nohup ' . escapeshellarg($php) . ' ' . escapeshellarg(__FILE__) . ' --batch-job=' . escapeshellarg($jobId) . ' </dev/null >/dev/null 2>&1 &';
+        if (function_exists('exec')) @exec($command);
+        else if (function_exists('shell_exec')) @shell_exec($command);
+        else respond(array('ok' => false, 'error' => 'Servidor nao permite iniciar tarefas em segundo plano.'), 503);
+        respond(array('ok' => true, 'job' => $job));
+    }
+
+    if ($action === 'batch_jobs') {
+        batchRequestRequired();
+        $jobs = array();
+        foreach (glob(batchJobsDir($cfg) . '/*.json') as $path) {
+            $job = json_decode((string) @file_get_contents($path), true);
+            if (!is_array($job)) continue;
+            unset($job['client_ids'], $job['results']);
+            if ($job['status'] !== 'completed' || empty($job['seen_at'])) $jobs[] = $job;
+        }
+        usort($jobs, function ($a, $b) { return strcmp((string) $b['created_at'], (string) $a['created_at']); });
+        respond(array('ok' => true, 'jobs' => array_slice($jobs, 0, 10)));
+    }
+
+    if ($action === 'batch_mark_seen') {
+        batchRequestRequired();
+        $job = readBatchJob($cfg, isset($_POST['id']) ? $_POST['id'] : '');
+        if ($job['status'] !== 'completed') respond(array('ok' => false, 'error' => 'A tarefa ainda nao foi concluida.'), 409);
+        $job['seen_at'] = date('c'); writeBatchJob($cfg, $job);
+        respond(array('ok' => true));
+    }
+
     if ($action === 'batch_preview') {
         batchRequestRequired();
         $limit = isset($_POST['limit']) ? (int) $_POST['limit'] : 500;
@@ -237,20 +427,9 @@ try {
         $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
         $confirmed = isset($_POST['confirm']) && $_POST['confirm'] === '1';
         if ($id < 1 || !$confirmed) respond(array('ok' => false, 'error' => 'Confirmacao obrigatoria.'), 422);
-        $db = databaseConnection($cfg);
-        $result = $db->query("SELECT id,nome,login,cep,endereco,numero,bairro,cidade,estado,coordenadas FROM sis_cliente WHERE id=" . $id . " LIMIT 1");
-        $row = $result ? $result->fetch_assoc() : null;
-        if (!$row) throw new RuntimeException('Cliente nao encontrado.');
-        if (trim((string) $row['coordenadas']) !== '') respond(array('ok' => true, 'status' => 'ignored', 'message' => 'Cliente ja possui coordenadas.'));
-        $resolved = batchGeocodeClient($row, $cfg);
-        $stmt = $db->prepare("UPDATE sis_cliente SET coordenadas=? WHERE id=? AND TRIM(COALESCE(coordenadas,''))=''");
-        if (!$stmt) throw new RuntimeException('Falha ao preparar atualizacao.');
-        $stmt->bind_param('si', $resolved['coordinates'], $id);
-        if (!$stmt->execute()) throw new RuntimeException('Falha ao atualizar cliente.');
-        $updated = $stmt->affected_rows === 1;
-        $stmt->close();
-        $db->close();
-        respond(array('ok' => true, 'status' => $updated ? 'updated' : 'ignored', 'coordinates' => $resolved['coordinates'], 'precision' => $resolved['precision']));
+        $resolved = processBatchClient($id, $cfg);
+        $resolved['ok'] = true;
+        respond($resolved);
     }
 
     if ($action === 'photon') {
@@ -378,5 +557,8 @@ try {
     respond($payload);
 } catch (Exception $e) {
     error_log('[mka-geocodificacao] ' . get_class($e) . ': ' . $e->getMessage());
+    if (strpos($e->getMessage(), 'RATE_LIMIT:') === 0) {
+        respond(array('ok' => false, 'error' => substr($e->getMessage(), 12)), 429);
+    }
     respond(array('ok' => false, 'error' => 'Falha temporaria ao consultar geocodificacao.'), 502);
 }

@@ -49,6 +49,7 @@
             '<button type="button" class="button" id="geo_batch_close">Fechar</button></div>' +
             '<div id="geo_batch_summary">Consulte os clientes antes de confirmar. Coordenadas existentes nunca serão alteradas.</div>' +
             '<div id="geo_batch_body"><p>Carregando clientes…</p></div>' +
+            '<div style="padding:10px 16px;background:#fff8df;border-top:1px solid #eadca4"><label><input type="checkbox" id="geo_batch_background" checked> <strong>Executar em segundo plano</strong> (pode fechar a pagina; o MK-AUTH avisara quando terminar)</label></div>' +
             '<div id="geo_batch_footer"><label><input type="checkbox" id="geo_batch_all" checked> Selecionar todos</label>' +
             '<span id="geo_batch_progress">Aguardando consulta.</span>' +
             '<button type="button" class="button is-primary" id="geo_batch_confirm" disabled>Confirmar e atualizar selecionados</button></div></div>';
@@ -59,7 +60,9 @@
         var progress = document.getElementById('geo_batch_progress');
         var confirmButton = document.getElementById('geo_batch_confirm');
         var allCheckbox = document.getElementById('geo_batch_all');
+        var backgroundCheckbox = document.getElementById('geo_batch_background');
         var running = false;
+        var monitorTimer = null;
 
         function api(action, fields) {
             var data = new URLSearchParams();
@@ -69,7 +72,11 @@
                 headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-MKAUTH-Batch':'1'}, body:data.toString()
             }).then(function(response){
                 return response.json().catch(function(){ throw new Error('Resposta inválida do servidor.'); }).then(function(data){
-                    if (!response.ok || !data.ok) throw new Error(data.error || ('HTTP ' + response.status));
+                    if (!response.ok || !data.ok) {
+                        var error = new Error(data.error || ('HTTP ' + response.status));
+                        error.status = response.status;
+                        throw error;
+                    }
                     return data;
                 });
             });
@@ -85,6 +92,47 @@
         }
         function clientAddress(client) {
             return [client.endereco, client.numero, client.bairro, client.cidade, client.estado].filter(Boolean).join(', ');
+        }
+        function statusName(status) {
+            return {queued:'Aguardando inicio',running:'Executando',waiting:'Em pausa automatica',completed:'Concluida',failed:'Falhou'}[status] || status;
+        }
+        function renderJob(job) {
+            var percent = job.total ? Math.floor((job.current / job.total) * 100) : 100;
+            open.className='button is-info';
+            open.textContent=job.status==='completed' ? 'Processamento concluido - ver resultado' : 'Processando '+job.current+'/'+job.total+' ('+percent+'%) - ver andamento';
+            summary.textContent = 'Tarefa em segundo plano: ' + statusName(job.status) + '.';
+            body.innerHTML = '<div style="max-width:760px;margin:30px auto;font-size:15px">' +
+                '<p><strong>Progresso:</strong> <span id="geo_job_numbers"></span></p>' +
+                '<div style="height:22px;background:#eee;border-radius:12px;overflow:hidden"><div id="geo_job_bar" style="height:100%;background:#00bfa5;width:'+percent+'%"></div></div>' +
+                '<p id="geo_job_counts" style="margin-top:14px"></p><p id="geo_job_message"></p></div>';
+            document.getElementById('geo_job_numbers').textContent=job.current+' de '+job.total+' ('+percent+'%)';
+            document.getElementById('geo_job_counts').textContent=job.updated+' atualizado(s), '+job.ignored+' ignorado(s), '+job.failed+' falha(s).';
+            document.getElementById('geo_job_message').textContent=job.message||'';
+            progress.textContent=statusName(job.status)+' - '+job.current+' de '+job.total+'.';
+            running = job.status==='queued'||job.status==='running'||job.status==='waiting';
+            confirmButton.disabled=true;allCheckbox.disabled=running;backgroundCheckbox.disabled=running;
+        }
+        function monitorJob() {
+            if(monitorTimer){clearTimeout(monitorTimer);monitorTimer=null;}
+            api('batch_jobs',{}).then(function(data){
+                var active=data.jobs.find(function(job){return job.status==='queued'||job.status==='running'||job.status==='waiting';});
+                if(active){renderJob(active);monitorTimer=setTimeout(monitorJob,5000);return;}
+                var completed=data.jobs.find(function(job){return job.status==='completed'&&!job.seen_at;});
+                if(completed){renderJob(completed);running=false;allCheckbox.disabled=false;backgroundCheckbox.disabled=false;summary.textContent='Tarefa concluida. Confirme o aviso persistente para registrar que o resultado foi visto.';return;}
+                running=false;allCheckbox.disabled=false;backgroundCheckbox.disabled=false;loadPreview();
+            }).catch(function(error){summary.textContent='Falha ao consultar andamento.';progress.textContent=error.message;});
+        }
+        function refreshMainButton() {
+            api('batch_jobs',{}).then(function(data){
+                var job=data.jobs.find(function(item){return item.status==='queued'||item.status==='running'||item.status==='waiting'||(item.status==='completed'&&!item.seen_at);});
+                if(job){
+                    var percent=job.total?Math.floor((job.current/job.total)*100):100;
+                    open.className='button is-info';
+                    open.textContent=job.status==='completed'?'Processamento concluido - ver resultado':'Processando '+job.current+'/'+job.total+' ('+percent+'%) - ver andamento';
+                }else{
+                    open.className='button is-warning';open.textContent='Atualizar coordenadas de todos os clientes';
+                }
+            }).catch(function(){}).then(function(){setTimeout(refreshMainButton,10000);});
         }
         function loadPreview() {
             running = false; confirmButton.disabled = true; body.innerHTML = '<p>Consultando clientes sem coordenadas…</p>';
@@ -111,6 +159,13 @@
             var boxes = selectedBoxes();
             if (!boxes.length || running) return;
             if (!window.confirm('Confirma a busca e gravação das coordenadas para ' + boxes.length + ' cliente(s)? Coordenadas existentes não serão alteradas.')) return;
+            if (backgroundCheckbox.checked) {
+                running=true;confirmButton.disabled=true;allCheckbox.disabled=true;backgroundCheckbox.disabled=true;
+                api('batch_start',{ids:JSON.stringify(boxes.map(function(box){return parseInt(box.value,10);})),confirm:'1'}).then(function(data){
+                    renderJob(data.job);monitorTimer=setTimeout(monitorJob,1500);
+                }).catch(function(error){running=false;confirmButton.disabled=false;allCheckbox.disabled=false;backgroundCheckbox.disabled=false;summary.textContent='Nao foi possivel iniciar em segundo plano.';progress.textContent=error.message;});
+                return;
+            }
             running=true; confirmButton.disabled=true; allCheckbox.disabled=true;
             var index=0, updated=0, failed=0, ignored=0;
             function next() {
@@ -125,15 +180,26 @@
                 api('batch_process', {id:box.value,confirm:'1'}).then(function(data){
                     if(data.status==='updated'){updated++;row.className='geo_ok';statusCell.textContent='Atualizado: '+data.coordinates+' ('+data.precision+')';}
                     else{ignored++;statusCell.textContent=data.message||'Ignorado';}
-                }).catch(function(error){failed++;row.className='geo_fail';statusCell.textContent='Falha: '+error.message;}).then(next);
+                }).catch(function(error){
+                    failed++;row.className='geo_fail';statusCell.textContent='Falha: '+error.message;
+                    if(error.status===429){
+                        running=false;allCheckbox.disabled=false;confirmButton.disabled=false;
+                        summary.textContent='Processamento pausado para respeitar o limite do OpenStreetMap. Os clientes restantes não foram consultados.';
+                        progress.textContent='Pausado após ' + index + ' de ' + boxes.length + '. Tente novamente mais tarde.';
+                    }
+                }).then(function(){if(running)next();});
             }
             next();
         }
 
-        open.addEventListener('click', function(){ modal.style.display='block'; loadPreview(); });
-        document.getElementById('geo_batch_close').addEventListener('click', function(){ if(!running) modal.style.display='none'; });
+        open.addEventListener('click', function(){ modal.style.display='block'; monitorJob(); });
+        document.getElementById('geo_batch_close').addEventListener('click', function(){
+            modal.style.display='none';
+            if(monitorTimer){clearTimeout(monitorTimer);monitorTimer=null;}
+        });
         allCheckbox.addEventListener('change', function(){ Array.prototype.forEach.call(body.querySelectorAll('.geo_batch_select'),function(box){box.checked=allCheckbox.checked;});updateSelection(); });
         confirmButton.addEventListener('click', processSelected);
+        refreshMainButton();
     }
 
     function init() {
@@ -559,6 +625,28 @@
         modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
     }
 
-    function boot() { initBatchCoordinates(); init(); }
+    function initBatchNotifications() {
+        if (window.location.pathname.indexOf('/admin/') === -1 || document.getElementById('geo_job_notice')) return;
+        function api(action, fields) {
+            var data=new URLSearchParams();Object.keys(fields||{}).forEach(function(k){data.append(k,fields[k]);});
+            return fetch('addons/geocodificacao/geocode.php?action='+encodeURIComponent(action),{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-MKAUTH-Batch':'1'},body:data.toString()})
+                .then(function(r){return r.json().then(function(d){if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d;});});
+        }
+        api('batch_jobs',{}).then(function(data){
+            var completed=data.jobs.filter(function(job){return job.status==='completed'&&!job.seen_at;});
+            if(!completed.length)return;
+            var job=completed[0],finished=job.finished_at?new Date(job.finished_at):new Date();
+            var overlay=document.createElement('div');overlay.id='geo_job_notice';overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px';
+            var card=document.createElement('div');card.style.cssText='background:#fff;max-width:560px;width:100%;border-radius:8px;box-shadow:0 10px 35px rgba(0,0,0,.35);padding:22px';
+            var title=document.createElement('h3');title.textContent='Atualizacao de coordenadas concluida';title.style.marginTop='0';
+            var message=document.createElement('p');message.textContent='Finalizada em '+finished.toLocaleString('pt-BR')+'. Resultado: '+job.updated+' atualizado(s), '+job.ignored+' ignorado(s) e '+job.failed+' falha(s).';
+            var warning=document.createElement('p');warning.textContent='Este aviso continuara aparecendo ate voce confirmar que viu o resultado.';warning.style.cssText='background:#fff8df;padding:10px;border-radius:4px';
+            var button=document.createElement('button');button.type='button';button.className='button is-primary';button.textContent='Confirmar que vi';
+            button.addEventListener('click',function(){button.disabled=true;api('batch_mark_seen',{id:job.id}).then(function(){overlay.remove();}).catch(function(e){button.disabled=false;window.alert(e.message);});});
+            card.appendChild(title);card.appendChild(message);card.appendChild(warning);card.appendChild(button);overlay.appendChild(card);document.body.appendChild(overlay);
+        }).catch(function(){});
+    }
+
+    function boot() { initBatchNotifications(); initBatchCoordinates(); init(); }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
