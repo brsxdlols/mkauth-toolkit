@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="2.8.1"
+VERSION="2.9.0"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/geocodificacao"
@@ -11,7 +11,7 @@ MAIN_JS="$ADMIN_DIR/scripts/mk-auth.js"
 STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_ROOT="${MKAUTH_BACKUP_ROOT:-/root/backups}"
 BACKUP_DIR="$BACKUP_ROOT/mk-auth-geocodificacao-$STAMP-v$VERSION"
-LOADER=';document.addEventListener("DOMContentLoaded",function(){if(document.getElementById("coordenadas")&&!document.getElementById("mka-geocodificacao-js")){var s=document.createElement("script");s.id="mka-geocodificacao-js";s.src="addons/geocodificacao/geocodificacao.js?v=2.8.1";document.head.appendChild(s);}});'
+LOADER=';document.addEventListener("DOMContentLoaded",function(){if((document.getElementById("coordenadas")||location.pathname.indexOf("conf_mapas.hhvm")>=0)&&!document.getElementById("mka-geocodificacao-js")){var s=document.createElement("script");s.id="mka-geocodificacao-js";s.src="addons/geocodificacao/geocodificacao.js?v=2.9.0";document.head.appendChild(s);}});'
 
 fail() { echo "ERRO: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail "execute como root"
@@ -36,14 +36,14 @@ install -m 0644 "$SOURCE_DIR/vendor/leaflet.css" "$ADMIN_DIR/estilos/leaflet.css
 install -m 0644 "$SOURCE_DIR/vendor/leaflet.js" "$ADMIN_DIR/scripts/leaflet.js"
 
 if grep -q 'mka-geocodificacao-js' "$MAIN_JS"; then
-    sed -i -E 's#geocodificacao\.js\?v=[0-9.]+#geocodificacao.js?v=2.8.1#g' "$MAIN_JS"
-else
-    printf '\n%s\n' "$LOADER" >> "$MAIN_JS"
+    sed -i '/mka-geocodificacao-js/d' "$MAIN_JS"
 fi
+printf '\n%s\n' "$LOADER" >> "$MAIN_JS"
 
 php -l "$ADDON_DIR/geocode.php" >/dev/null
 grep -q 'mka-geocodificacao-js' "$MAIN_JS"
-grep -q 'geocodificacao.js?v=2.8.1' "$MAIN_JS"
+grep -q 'geocodificacao.js?v=2.9.0' "$MAIN_JS"
+grep -q 'conf_mapas.hhvm' "$MAIN_JS"
 grep -q 'nativeMapSettings' "$ADDON_DIR/geocodificacao.js"
 
 printf '%s\n' "$VERSION" > "$ADDON_DIR/VERSION"
