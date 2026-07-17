@@ -1,10 +1,10 @@
 # MK-AUTH Toolkit
 
-Repositório privado de addons e ferramentas para MK-AUTH.
+Addons e ferramentas para MK-AUTH com instalação automatizada.
 
 ## Geocodificação de clientes
 
-A versão `2.8.1` adiciona ao cadastro de clientes e mantém compatibilidade com PHP legado:
+A versão `2.9.0` adiciona ao cadastro de clientes, mantém compatibilidade com PHP legado e inclui atualização administrativa em lote:
 
 - pesquisa de endereço e coordenadas em janela integrada;
 - seleção automática do provedor configurado em **Opções → Mapas**;
@@ -14,6 +14,8 @@ A versão `2.8.1` adiciona ao cadastro de clientes e mantém compatibilidade com
 - marcador arrastável que ajusta somente as coordenadas;
 - validação postal para evitar que resultados aproximados sobrescrevam o endereço correto;
 - preenchimento manual sempre preservado.
+- prévia e seleção de clientes sem coordenadas em **Opções → Recursos → Mapas**;
+- confirmação explícita e processamento progressivo, sem sobrescrever coordenadas existentes.
 
 Nenhuma chave Google ou credencial é armazenada neste repositório.
 
@@ -61,10 +63,10 @@ No Windows:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\installers\build-release.ps1
 ```
 
-Copie `dist/mkauth-geocodificacao-2.8.1.run` para o servidor e execute:
+Copie `dist/mkauth-geocodificacao-2.9.0.run` para o servidor e execute:
 
 ```bash
-bash /tmp/mkauth-geocodificacao-2.8.1.run
+bash /tmp/mkauth-geocodificacao-2.9.0.run
 ```
 
 ## Reparação após atualização do MK-AUTH
@@ -80,7 +82,7 @@ git pull --ff-only
 Cada instalação cria backup em `/root/backups/mk-auth-geocodificacao-*`.
 
 ```bash
-./installers/rollback.sh /root/backups/mk-auth-geocodificacao-AAAAmmdd-HHMMSS-v2.8.1
+./installers/rollback.sh /root/backups/mk-auth-geocodificacao-AAAAmmdd-HHMMSS-v2.9.0
 ```
 
 Consulte [docs/geocodificacao.md](docs/geocodificacao.md) para requisitos, validação e limitações.

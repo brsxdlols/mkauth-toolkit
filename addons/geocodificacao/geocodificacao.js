@@ -15,6 +15,127 @@
         });
     }
 
+    function initBatchCoordinates() {
+        if (window.location.pathname.indexOf('conf_mapas.hhvm') === -1 || document.getElementById('geo_batch_open')) return;
+        var submit = document.querySelector('button[type="submit"],input[type="submit"]');
+        if (!submit) return;
+
+        var style = document.createElement('style');
+        style.textContent =
+            '#geo_batch_modal{position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:99999;display:none;padding:4vh 4vw}' +
+            '#geo_batch_card{background:#fff;max-width:1250px;height:92vh;margin:auto;border-radius:6px;display:flex;flex-direction:column;overflow:hidden}' +
+            '#geo_batch_header,#geo_batch_footer{padding:12px 16px;display:flex;gap:10px;align-items:center;border-bottom:1px solid #ddd}' +
+            '#geo_batch_footer{border-top:1px solid #ddd;border-bottom:0;justify-content:space-between}' +
+            '#geo_batch_body{padding:12px 16px;overflow:auto;flex:1}' +
+            '#geo_batch_table{width:100%;font-size:12px;border-collapse:collapse}' +
+            '#geo_batch_table th,#geo_batch_table td{padding:7px;border-bottom:1px solid #e7e7e7;text-align:left;vertical-align:top}' +
+            '#geo_batch_table tr.geo_ok{background:#ecfff6}#geo_batch_table tr.geo_fail{background:#fff0f0}' +
+            '#geo_batch_summary{padding:9px 14px;background:#e8f7ff;color:#175b75}' +
+            '@media(max-width:700px){#geo_batch_modal{padding:0}#geo_batch_card{height:100vh;border-radius:0}}';
+        document.head.appendChild(style);
+
+        var open = document.createElement('button');
+        open.type = 'button';
+        open.id = 'geo_batch_open';
+        open.className = 'button is-warning';
+        open.style.marginLeft = '8px';
+        open.textContent = 'Atualizar coordenadas de todos os clientes';
+        submit.parentNode.appendChild(open);
+
+        var modal = document.createElement('div');
+        modal.id = 'geo_batch_modal';
+        modal.innerHTML = '<div id="geo_batch_card">' +
+            '<div id="geo_batch_header"><strong>Atualização de coordenadas em lote</strong><span style="flex:1"></span>' +
+            '<button type="button" class="button" id="geo_batch_close">Fechar</button></div>' +
+            '<div id="geo_batch_summary">Consulte os clientes antes de confirmar. Coordenadas existentes nunca serão alteradas.</div>' +
+            '<div id="geo_batch_body"><p>Carregando clientes…</p></div>' +
+            '<div id="geo_batch_footer"><label><input type="checkbox" id="geo_batch_all" checked> Selecionar todos</label>' +
+            '<span id="geo_batch_progress">Aguardando consulta.</span>' +
+            '<button type="button" class="button is-primary" id="geo_batch_confirm" disabled>Confirmar e atualizar selecionados</button></div></div>';
+        document.body.appendChild(modal);
+
+        var body = document.getElementById('geo_batch_body');
+        var summary = document.getElementById('geo_batch_summary');
+        var progress = document.getElementById('geo_batch_progress');
+        var confirmButton = document.getElementById('geo_batch_confirm');
+        var allCheckbox = document.getElementById('geo_batch_all');
+        var running = false;
+
+        function api(action, fields) {
+            var data = new URLSearchParams();
+            Object.keys(fields || {}).forEach(function(key){ data.append(key, fields[key]); });
+            return fetch('addons/geocodificacao/geocode.php?action=' + encodeURIComponent(action), {
+                method:'POST', credentials:'same-origin', cache:'no-store',
+                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-MKAUTH-Batch':'1'}, body:data.toString()
+            }).then(function(response){
+                return response.json().catch(function(){ throw new Error('Resposta inválida do servidor.'); }).then(function(data){
+                    if (!response.ok || !data.ok) throw new Error(data.error || ('HTTP ' + response.status));
+                    return data;
+                });
+            });
+        }
+
+        function selectedBoxes() {
+            return Array.prototype.slice.call(body.querySelectorAll('.geo_batch_select:checked'));
+        }
+        function updateSelection() {
+            var count = selectedBoxes().length;
+            confirmButton.disabled = running || count === 0;
+            progress.textContent = count + ' cliente(s) selecionado(s).';
+        }
+        function clientAddress(client) {
+            return [client.endereco, client.numero, client.bairro, client.cidade, client.estado].filter(Boolean).join(', ');
+        }
+        function loadPreview() {
+            running = false; confirmButton.disabled = true; body.innerHTML = '<p>Consultando clientes sem coordenadas…</p>';
+            api('batch_preview', {limit:1000}).then(function(data){
+                summary.textContent = data.total + ' cliente(s) sem coordenadas e com CEP válido. Exibindo ' + data.clients.length + ' para conferência.';
+                if (!data.clients.length) { body.innerHTML = '<p>Nenhum cliente elegível encontrado.</p>'; progress.textContent = 'Nada para atualizar.'; return; }
+                var table = document.createElement('table'); table.id = 'geo_batch_table';
+                table.innerHTML = '<thead><tr><th></th><th>ID</th><th>Cliente</th><th>CEP</th><th>Endereço cadastrado</th><th>Status</th></tr></thead><tbody></tbody>';
+                var tbody = table.querySelector('tbody');
+                data.clients.forEach(function(client){
+                    var tr = document.createElement('tr'); tr.setAttribute('data-client-id', client.id);
+                    var tdCheck = document.createElement('td');
+                    var check = document.createElement('input'); check.type='checkbox'; check.checked=true; check.className='geo_batch_select'; check.value=client.id; check.addEventListener('change', updateSelection); tdCheck.appendChild(check);
+                    var values = [client.id, client.nome || client.login, client.cep, clientAddress(client), 'Pronto para consultar'];
+                    tr.appendChild(tdCheck);
+                    values.forEach(function(value){ var td=document.createElement('td'); td.textContent=value || ''; tr.appendChild(td); });
+                    tbody.appendChild(tr);
+                });
+                body.innerHTML=''; body.appendChild(table); allCheckbox.checked=true; updateSelection();
+            }).catch(function(error){ body.innerHTML='<p class="has-text-danger"></p>'; body.firstChild.textContent=error.message; progress.textContent='Falha na consulta.'; });
+        }
+
+        function processSelected() {
+            var boxes = selectedBoxes();
+            if (!boxes.length || running) return;
+            if (!window.confirm('Confirma a busca e gravação das coordenadas para ' + boxes.length + ' cliente(s)? Coordenadas existentes não serão alteradas.')) return;
+            running=true; confirmButton.disabled=true; allCheckbox.disabled=true;
+            var index=0, updated=0, failed=0, ignored=0;
+            function next() {
+                if (index >= boxes.length) {
+                    running=false; allCheckbox.disabled=false; confirmButton.disabled=false;
+                    progress.textContent='Concluído: ' + updated + ' atualizado(s), ' + ignored + ' ignorado(s), ' + failed + ' falha(s).';
+                    summary.textContent='Processamento concluído. Revise os status abaixo antes de fechar.'; return;
+                }
+                var box=boxes[index++], row=body.querySelector('tr[data-client-id="' + box.value + '"]'), statusCell=row.cells[row.cells.length-1];
+                statusCell.textContent='Consultando…'; progress.textContent='Processando ' + index + ' de ' + boxes.length + '…';
+                if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({block:'center',behavior:'smooth'});
+                api('batch_process', {id:box.value,confirm:'1'}).then(function(data){
+                    if(data.status==='updated'){updated++;row.className='geo_ok';statusCell.textContent='Atualizado: '+data.coordinates+' ('+data.precision+')';}
+                    else{ignored++;statusCell.textContent=data.message||'Ignorado';}
+                }).catch(function(error){failed++;row.className='geo_fail';statusCell.textContent='Falha: '+error.message;}).then(next);
+            }
+            next();
+        }
+
+        open.addEventListener('click', function(){ modal.style.display='block'; loadPreview(); });
+        document.getElementById('geo_batch_close').addEventListener('click', function(){ if(!running) modal.style.display='none'; });
+        allCheckbox.addEventListener('change', function(){ Array.prototype.forEach.call(body.querySelectorAll('.geo_batch_select'),function(box){box.checked=allCheckbox.checked;});updateSelection(); });
+        confirmButton.addEventListener('click', processSelected);
+    }
+
     function init() {
         var coord = document.getElementById('coordenadas');
         var form = document.getElementById('form');
@@ -438,5 +559,6 @@
         modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
     }
 
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+    function boot() { initBatchCoordinates(); init(); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
