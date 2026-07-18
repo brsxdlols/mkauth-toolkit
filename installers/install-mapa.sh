@@ -19,7 +19,7 @@ fail() { echo "ERRO: $*" >&2; exit 1; }
 [ -d "$ADMIN_DIR/addons" ] || fail "diretorio de addons nao encontrado: $ADMIN_DIR/addons"
 [ -d "$CENTRAL_DIR" ] || fail "diretorio central nao encontrado: $CENTRAL_DIR"
 
-for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm menu.js assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
+for file in VERSION auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm menu.js assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
     [ -f "$SOURCE_DIR/$file" ] || fail "arquivo do pacote ausente: $file"
 done
 
@@ -33,6 +33,7 @@ for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
     if [ -f "$CENTRAL_DIR/$name" ]; then cp -a "$CENTRAL_DIR/$name" "$BACKUP_DIR/central-$name"; else : > "$BACKUP_DIR/central-$name.absent"; fi
 done
 mkdir -p "$ADDON_DIR/assets"
+install -m 0644 "$SOURCE_DIR/VERSION" "$ADDON_DIR/VERSION"
 
 for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm menu.js; do
     install -m 0644 "$SOURCE_DIR/$file" "$ADDON_DIR/$file"
