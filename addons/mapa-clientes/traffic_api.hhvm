@@ -1,0 +1,55 @@
+<?php
+require __DIR__ . '/auth.php';
+require_map_access(true);
+$authenticatedSession = true;
+require __DIR__ . '/config.hhvm';
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+function traffic_response($status, $payload) {
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_NUMERIC_CHECK);
+    exit;
+}
+
+$login = isset($_GET['login']) ? trim((string)$_GET['login']) : '';
+if ($login === '' || strlen($login) > 128) traffic_response(400, array('ok' => false, 'error' => 'Login inválido.'));
+
+$stmt = $link->prepare("SELECT r.nasipaddress, r.framedipaddress, n.senha FROM sis_cliente c INNER JOIN radacct r ON TRIM(r.username)=TRIM(c.login) LEFT JOIN nas n ON TRIM(n.nasname)=TRIM(r.nasipaddress) WHERE c.login=? AND c.cli_ativado='s' AND r.acctstoptime IS NULL ORDER BY r.radacctid DESC LIMIT 1");
+if (!$stmt) traffic_response(500, array('ok' => false, 'error' => 'Consulta indisponível.'));
+$stmt->bind_param('s', $login);
+$stmt->execute();
+$result = $stmt->get_result();
+$session = $result ? $result->fetch_assoc() : null;
+$stmt->close();
+if (!$session || empty($session['nasipaddress'])) traffic_response(409, array('ok' => false, 'error' => 'Cliente sem sessão PPPoE ativa.'));
+
+$nasIp = trim((string)$session['nasipaddress']);
+if (empty($session['senha'])) traffic_response(404, array('ok' => false, 'error' => 'NAS sem credencial de API cadastrada.'));
+
+require_once __DIR__ . '/../busca_inteligente/api/routeros_api.class.php';
+$api = new RouterosAPI();
+$api->debug = false;
+if (!$api->connect($nasIp, 'mkauth', $session['senha'])) traffic_response(502, array('ok' => false, 'error' => 'Não foi possível consultar o roteador.'));
+
+$active = $api->comm('/ppp/active/print', array('?name' => $login));
+if (!is_array($active) || empty($active[0])) {
+    $api->disconnect();
+    traffic_response(409, array('ok' => false, 'error' => 'PPPoE não localizado no roteador.'));
+}
+$address = isset($active[0]['address']) ? $active[0]['address'] : $session['framedipaddress'];
+$uptime = isset($active[0]['uptime']) ? $active[0]['uptime'] : '';
+$traffic = $api->comm('/interface/monitor-traffic', array('interface' => '<pppoe-' . $login . '>', 'once' => ''));
+if (!is_array($traffic) || empty($traffic[0]) || isset($traffic['!trap'])) $traffic = $api->comm('/interface/monitor-traffic', array('interface' => $login, 'once' => ''));
+$pingMs = null;
+if ($address) {
+    $ping = $api->comm('/ping', array('address' => $address, 'count' => '1'));
+    if (is_array($ping) && isset($ping[0]['time'])) $pingMs = (float)$ping[0]['time'];
+}
+$api->disconnect();
+if (!is_array($traffic) || empty($traffic[0])) traffic_response(502, array('ok' => false, 'error' => 'Tráfego indisponível.'));
+
+$rx = isset($traffic[0]['rx-bits-per-second']) ? ((float)$traffic[0]['rx-bits-per-second'] / 1048576) : 0;
+$tx = isset($traffic[0]['tx-bits-per-second']) ? ((float)$traffic[0]['tx-bits-per-second'] / 1048576) : 0;
+traffic_response(200, array('ok' => true, 'login' => $login, 'nas' => $nasIp, 'rx_mbps' => round($rx, 2), 'tx_mbps' => round($tx, 2), 'ping_ms' => $pingMs, 'uptime' => $uptime));
