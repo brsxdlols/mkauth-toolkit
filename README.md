@@ -63,10 +63,10 @@ No Windows:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\installers\build-release.ps1
 ```
 
-Copie `dist/mkauth-geocodificacao-2.14.14.run` para o servidor e execute:
+Copie `dist/mkauth-geocodificacao-2.14.15.run` para o servidor e execute:
 
 ```bash
-bash /tmp/mkauth-geocodificacao-2.14.14.run
+bash /tmp/mkauth-geocodificacao-2.14.15.run
 ```
 
 ## Repara??o ap?s atualiza??o do MK-AUTH
