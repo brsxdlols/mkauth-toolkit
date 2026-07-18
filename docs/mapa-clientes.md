@@ -4,6 +4,9 @@ O módulo instala o mapa protegido em `/admin/addons/mapa-clientes/maps.hhvm` se
 
 ## Recursos
 
+- identifica clientes bloqueados pelo campo nativo `sis_cliente.bloqueado`, com cadeado no marcador e estado no popup;
+- incorpora no popup um monitor compacto de tráfego do addon Busca Inteligente enquanto o cliente estiver online e a sessão administrativa estiver válida;
+
 - clientes online, offline e sem coordenadas nos totais e na lista;
 - filtros, busca, clusters e atualização em 30 segundos, 60 segundos ou 5 minutos;
 - OpenStreetMap e satélite, respeitando a configuração nativa quando disponível;

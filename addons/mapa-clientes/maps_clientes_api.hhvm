@@ -28,6 +28,7 @@ function clean_value($value) {
 $sql = "
 SELECT
     c.id, c.uuid_cliente, c.nome, c.login, c.coordenadas, c.plano, c.ssid, c.tipo,
+    c.bloqueado,
     c.cep, c.endereco, c.numero, c.bairro, c.cidade, c.estado, c.complemento,
     c.ramal, c.mac AS cadastro_mac, c.ip AS cadastro_ip, c.interface,
     c.porta_olt, c.caixa_herm, c.porta_splitter, c.onu_ont,
@@ -94,6 +95,7 @@ while ($row = $result->fetch_assoc()) {
         'lon' => $lon,
         'has_coordinates' => $hasCoordinates,
         'status' => $row['status'],
+        'blocked' => ($row['bloqueado'] === 'sim'),
         'session_count' => (int)$row['session_count'],
         'online_seconds' => $onlineSeconds,
         'connected_at' => clean_value($row['acctstarttime']),
