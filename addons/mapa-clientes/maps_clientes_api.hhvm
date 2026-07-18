@@ -145,6 +145,23 @@ if ($providerResult) {
     }
 }
 
+$branches = array();
+$branchResult = $link->query("SELECT id, nasname, shortname, description, endereco, numero, bairro, cidade, estado, coordenadas FROM nas ORDER BY id");
+if ($branchResult) {
+    while ($branch = $branchResult->fetch_assoc()) {
+        $lat = coord_value($branch['coordenadas'], 0);
+        $lon = coord_value($branch['coordenadas'], 1);
+        if ($lat === null || $lon === null) continue;
+        $branches[] = array(
+            'id' => (int)$branch['id'], 'nas' => clean_value($branch['nasname']),
+            'name' => clean_value($branch['shortname']), 'description' => clean_value($branch['description']),
+            'address' => clean_value($branch['endereco']), 'number' => clean_value($branch['numero']),
+            'district' => clean_value($branch['bairro']), 'city' => clean_value($branch['cidade']),
+            'state' => clean_value($branch['estado']), 'lat' => $lat, 'lon' => $lon
+        );
+    }
+}
+
 $options = array('server_maps' => 'osm', 'initial_layer' => 'mapa');
 $optionResult = $link->query("SELECT nome, valor FROM sis_opcao WHERE nome IN ('server_maps', 'camada_mapa')");
 if ($optionResult) {
@@ -161,5 +178,6 @@ echo json_encode(array(
     'summary' => array('total' => count($clients), 'online' => $online, 'offline' => $offline, 'mapped' => $mapped, 'unmapped' => $unmapped),
     'options' => $options,
     'providers' => $providers,
+    'branches' => $branches,
     'clients' => $clients
 ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
