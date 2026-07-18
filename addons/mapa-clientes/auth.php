@@ -1,7 +1,7 @@
 <?php
 define('MAP_ACCESS_COOKIE', 'mkauth_map_trusted');
 $mapAccessStateDir = getenv('MKAUTH_MAP_STATE');
-if (!$mapAccessStateDir) $mapAccessStateDir = '/var/lib/mkauth-mapa-clientes';
+if (!$mapAccessStateDir) $mapAccessStateDir = '/var/tmp/mkauth-mapa-clientes';
 define('MAP_ACCESS_STORE', rtrim($mapAccessStateDir, '/') . '/trusted-devices.json');
 define('MAP_ACCESS_TTL', 315360000); // dez anos: opcao pratica de "nunca sair"
 

@@ -12,8 +12,8 @@ require __DIR__ . '/config.hhvm';
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Mapa de Clientes Ativos</title>
   <link rel="stylesheet" href="../../estilos/leaflet.css">
-  <link rel="stylesheet" href="maps_assets/MarkerCluster.css">
-  <link rel="stylesheet" href="maps_assets/MarkerCluster.Default.css">
+  <link rel="stylesheet" href="assets/MarkerCluster.css">
+  <link rel="stylesheet" href="assets/MarkerCluster.Default.css">
   <style>
     :root{--blue:#1769aa;--green:#159447;--red:#d13c3c;--ink:#17212b;--muted:#687684;--panel:#fff;--line:#dfe5ea}
     body[data-theme="dark"]{--panel:#18222b;--ink:#edf5fa;--muted:#aab9c4;--line:#344550;background:#101820}body[data-theme="white"]{--panel:#fff;--ink:#17212b;--muted:#687684;--line:#dfe5ea;background:#eef2f5}body[data-theme="dark"] .tools input,body[data-theme="dark"] select,body[data-theme="dark"] .btn{background:#24323d;color:#eef6fb;border-color:#536573}body[data-theme="dark"] .counter{background:#22303a;color:#eef6fb}body[data-theme="dark"] .client:hover{background:#253744}
@@ -67,7 +67,7 @@ require __DIR__ . '/config.hhvm';
 <div id="demo-bar" class="demo-bar collapsed"><button id="demo-toggle" class="demo-toggle" type="button" title="Abrir alertas">‹</button><div class="demo-content"><strong>Alertas:</strong><select id="demo-alert"><option value="siren">Sirene</option><option value="mass">Alerta em massa</option><option value="online">Popup cliente online</option><option value="offline">Popup cliente offline</option><option value="both">Sirene e alerta em massa</option></select><button id="demo-run" type="button">Executar</button></div></div>
 <script src="../../scripts/jquery.js"></script>
 <script src="../../scripts/leaflet.js"></script>
-<script src="maps_assets/leaflet.markercluster.js"></script>
+<script src="assets/leaflet.markercluster.js"></script>
 <script>
 (function(){
   'use strict';
