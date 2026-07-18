@@ -1,0 +1,75 @@
+<?php
+require __DIR__ . '/auth.php';
+require_map_access(true);
+$authenticatedSession = true;
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+function respond($status, $payload) {
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, array('ok' => false, 'error' => 'Método não permitido.'));
+
+$token = isset($_POST['csrf']) ? (string)$_POST['csrf'] : '';
+if (!hash_equals(map_access_csrf(), $token)) {
+    respond(403, array('ok' => false, 'error' => 'Token de segurança inválido. Atualize a página.'));
+}
+
+$id = isset($_POST['id']) ? filter_var($_POST['id'], FILTER_VALIDATE_INT) : false;
+$lat = isset($_POST['lat']) ? filter_var(str_replace(',', '.', trim($_POST['lat'])), FILTER_VALIDATE_FLOAT) : false;
+$lon = isset($_POST['lon']) ? filter_var(str_replace(',', '.', trim($_POST['lon'])), FILTER_VALIDATE_FLOAT) : false;
+if ($id === false || $id < 1 || $lat === false || $lon === false || $lat < -90 || $lat > 90 || $lon < -180 || $lon > 180) {
+    respond(422, array('ok' => false, 'error' => 'Latitude ou longitude inválida.'));
+}
+
+$link = mysqli_connect('127.0.0.1', 'root', 'vertrigo', 'mkradius');
+if (!$link) respond(500, array('ok' => false, 'error' => 'Falha ao conectar ao banco.'));
+
+$check = mysqli_prepare($link, "SELECT coordenadas,cep,endereco,numero,bairro,cidade,estado,cidade_ibge FROM sis_cliente WHERE id = ? AND cli_ativado = 's' LIMIT 1");
+mysqli_stmt_bind_param($check, 'i', $id);
+mysqli_stmt_execute($check);
+mysqli_stmt_bind_result($check, $currentCoordinates, $currentCep, $currentAddress, $currentNumber, $currentDistrict, $currentCity, $currentState, $currentIbge);
+if (!mysqli_stmt_fetch($check)) respond(404, array('ok' => false, 'error' => 'Cliente ativo não encontrado.'));
+mysqli_stmt_close($check);
+
+$validCurrent = false;
+if ($currentCoordinates !== null && trim($currentCoordinates) !== '') {
+    $parts = explode(',', $currentCoordinates);
+    if (count($parts) === 2 && is_numeric(trim($parts[0])) && is_numeric(trim($parts[1]))) {
+        $oldLat = (float)trim($parts[0]); $oldLon = (float)trim($parts[1]);
+        $validCurrent = ($oldLat >= -90 && $oldLat <= 90 && $oldLon >= -180 && $oldLon <= 180);
+    }
+}
+if ($validCurrent) respond(409, array('ok' => false, 'error' => 'Este cliente já possui coordenadas válidas.'));
+
+$coordinates = number_format((float)$lat, 7, '.', '') . ',' . number_format((float)$lon, 7, '.', '');
+$fillAddress = isset($_POST['fill_address']) && $_POST['fill_address'] === '1';
+if ($fillAddress) {
+    function posted_value($name, $fallback, $maxLength) {
+        if (!isset($_POST[$name]) || trim((string)$_POST[$name]) === '') return $fallback;
+        return mb_substr(trim((string)$_POST[$name]), 0, $maxLength, 'UTF-8');
+    }
+    $cep = preg_replace('/[^0-9-]/', '', posted_value('cep', $currentCep, 9));
+    $address = posted_value('endereco', $currentAddress, 255);
+    $number = posted_value('numero', $currentNumber, 20);
+    $district = posted_value('bairro', $currentDistrict, 255);
+    $city = posted_value('cidade', $currentCity, 255);
+    $state = strtoupper(preg_replace('/[^A-Za-z]/', '', posted_value('estado', $currentState, 2)));
+    $ibge = preg_replace('/\D/', '', posted_value('cidade_ibge', $currentIbge, 16));
+    if ($address === '' || $city === '' || strlen($state) !== 2) respond(422, array('ok' => false, 'error' => 'O endereço localizado não possui rua, cidade e UF suficientes. Desmarque o preenchimento de endereço ou escolha outro resultado.'));
+    $update = mysqli_prepare($link, 'UPDATE sis_cliente SET coordenadas=?,cep=?,endereco=?,numero=?,bairro=?,cidade=?,estado=?,cidade_ibge=?,last_update=NOW() WHERE id=? LIMIT 1');
+    mysqli_stmt_bind_param($update, 'ssssssssi', $coordinates, $cep, $address, $number, $district, $city, $state, $ibge, $id);
+} else {
+    $update = mysqli_prepare($link, 'UPDATE sis_cliente SET coordenadas = ?, last_update = NOW() WHERE id = ? LIMIT 1');
+    mysqli_stmt_bind_param($update, 'si', $coordinates, $id);
+}
+if (!mysqli_stmt_execute($update) || mysqli_stmt_affected_rows($update) !== 1) {
+    respond(500, array('ok' => false, 'error' => 'Não foi possível atualizar o cadastro.'));
+}
+mysqli_stmt_close($update);
+$operator = isset($_SESSION['MKA_Usuario']) ? $_SESSION['MKA_Usuario'] : (isset($_SESSION['MM_Usuario']) ? $_SESSION['MM_Usuario'] : 'admin');
+error_log('MKMAP coordenadas atualizadas: cliente_id=' . $id . ' operador=' . preg_replace('/[^a-zA-Z0-9_.-]/', '', (string)$operator));
+respond(200, array('ok' => true, 'coordinates' => $coordinates, 'address_updated' => $fillAddress));

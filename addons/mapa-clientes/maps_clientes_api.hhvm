@@ -1,0 +1,163 @@
+<?php
+require __DIR__ . '/auth.php';
+require_map_access(true);
+$authenticatedSession = true;
+require __DIR__ . '/config.hhvm';
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+function coord_value($value, $index) {
+    if ($value === null || trim($value) === '') return null;
+    $parts = explode(',', $value);
+    if (count($parts) !== 2) return null;
+    $candidate = trim($parts[$index]);
+    if (!is_numeric($candidate)) return null;
+    $number = (float)$candidate;
+    if (($index === 0 && ($number < -90 || $number > 90)) ||
+        ($index === 1 && ($number < -180 || $number > 180))) return null;
+    return $number;
+}
+
+function clean_value($value) {
+    if ($value === null) return null;
+    $value = trim((string)$value);
+    return $value === '' ? null : $value;
+}
+
+$sql = "
+SELECT
+    c.id, c.uuid_cliente, c.nome, c.login, c.coordenadas, c.plano, c.ssid, c.tipo,
+    c.cep, c.endereco, c.numero, c.bairro, c.cidade, c.estado, c.complemento,
+    c.ramal, c.mac AS cadastro_mac, c.ip AS cadastro_ip, c.interface,
+    c.porta_olt, c.caixa_herm, c.porta_splitter, c.onu_ont,
+    CASE WHEN open_s.radacctid IS NULL THEN 'offline' ELSE 'online' END AS status,
+    COALESCE(open_s.session_count, 0) AS session_count,
+    open_r.acctstarttime, open_r.acctupdatetime, open_r.acctsessiontime,
+    open_r.framedipaddress, open_r.callingstationid, open_r.nasipaddress,
+    open_r.nasportid, open_r.nasporttype,
+    last_r.acctstarttime AS last_starttime,
+    last_r.acctstoptime AS last_stoptime,
+    last_r.acctterminatecause AS last_terminatecause
+FROM sis_cliente c
+LEFT JOIN (
+    SELECT username, MAX(radacctid) AS radacctid, COUNT(*) AS session_count
+    FROM radacct
+    WHERE acctstoptime IS NULL
+    GROUP BY username
+) open_s ON open_s.username = c.login
+LEFT JOIN radacct open_r ON open_r.radacctid = open_s.radacctid
+LEFT JOIN radacct last_r ON last_r.radacctid = (
+    SELECT rr.radacctid
+    FROM radacct rr
+    WHERE rr.username = c.login AND rr.acctstoptime IS NOT NULL
+    ORDER BY rr.radacctid DESC
+    LIMIT 1
+)
+WHERE c.cli_ativado = 's'
+ORDER BY c.nome, c.login
+";
+
+$result = $link->query($sql);
+if (!$result) {
+    http_response_code(500);
+    echo json_encode(array('ok' => false, 'error' => 'Falha ao consultar clientes.'));
+    exit;
+}
+
+$clients = array();
+$online = 0;
+$offline = 0;
+$mapped = 0;
+$unmapped = 0;
+$serverNow = time();
+
+while ($row = $result->fetch_assoc()) {
+    $lat = coord_value($row['coordenadas'], 0);
+    $lon = coord_value($row['coordenadas'], 1);
+    $hasCoordinates = ($lat !== null && $lon !== null);
+    if ($row['status'] === 'online') $online++; else $offline++;
+    if ($hasCoordinates) $mapped++; else $unmapped++;
+
+    $onlineSeconds = null;
+    if ($row['status'] === 'online' && $row['acctstarttime']) {
+        $start = strtotime($row['acctstarttime']);
+        if ($start !== false) $onlineSeconds = max(0, $serverNow - $start);
+    }
+
+    $clients[] = array(
+        'id' => (int)$row['id'],
+        'uuid' => $authenticatedSession ? clean_value($row['uuid_cliente']) : null,
+        'name' => clean_value($row['nome']),
+        'login' => clean_value($row['login']),
+        'lat' => $lat,
+        'lon' => $lon,
+        'has_coordinates' => $hasCoordinates,
+        'status' => $row['status'],
+        'session_count' => (int)$row['session_count'],
+        'online_seconds' => $onlineSeconds,
+        'connected_at' => clean_value($row['acctstarttime']),
+        'last_update' => clean_value($row['acctupdatetime']),
+        'last_connected_at' => clean_value($row['last_starttime']),
+        'last_disconnected_at' => clean_value($row['last_stoptime']),
+        'last_disconnect_cause' => clean_value($row['last_terminatecause']),
+        'framed_ip' => clean_value($row['framedipaddress']),
+        'calling_station_id' => clean_value($row['callingstationid']),
+        'nas_ip' => clean_value($row['nasipaddress']),
+        'nas_port' => clean_value($row['nasportid']),
+        'nas_port_type' => clean_value($row['nasporttype']),
+        'plan' => clean_value($row['plano']),
+        'ssid' => clean_value($row['ssid']),
+        'type' => clean_value($row['tipo']),
+        'postal_code' => $authenticatedSession ? clean_value($row['cep']) : null,
+        'address' => $authenticatedSession ? clean_value($row['endereco']) : null,
+        'address_number' => $authenticatedSession ? clean_value($row['numero']) : null,
+        'district' => $authenticatedSession ? clean_value($row['bairro']) : null,
+        'city' => $authenticatedSession ? clean_value($row['cidade']) : null,
+        'state' => $authenticatedSession ? clean_value($row['estado']) : null,
+        'address_complement' => $authenticatedSession ? clean_value($row['complemento']) : null,
+        'branch' => clean_value($row['ramal']),
+        'registered_mac' => clean_value($row['cadastro_mac']),
+        'registered_ip' => clean_value($row['cadastro_ip']),
+        'interface' => clean_value($row['interface']),
+        'olt_port' => clean_value($row['porta_olt']),
+        'cto' => clean_value($row['caixa_herm']),
+        'splitter_port' => clean_value($row['porta_splitter']),
+        'onu_ont' => clean_value($row['onu_ont'])
+    );
+}
+
+$providers = array();
+$providerResult = $link->query("SELECT id, nome, endereco, bairro, cidade, estado, coordenadas FROM sis_provedor ORDER BY id");
+if ($providerResult) {
+    while ($provider = $providerResult->fetch_assoc()) {
+        $lat = coord_value($provider['coordenadas'], 0);
+        $lon = coord_value($provider['coordenadas'], 1);
+        if ($lat === null || $lon === null) continue;
+        $providers[] = array(
+            'id' => (int)$provider['id'], 'name' => clean_value($provider['nome']),
+            'address' => clean_value($provider['endereco']), 'district' => clean_value($provider['bairro']),
+            'city' => clean_value($provider['cidade']), 'state' => clean_value($provider['estado']),
+            'lat' => $lat, 'lon' => $lon
+        );
+    }
+}
+
+$options = array('server_maps' => 'osm', 'initial_layer' => 'mapa');
+$optionResult = $link->query("SELECT nome, valor FROM sis_opcao WHERE nome IN ('server_maps', 'camada_mapa')");
+if ($optionResult) {
+    while ($option = $optionResult->fetch_assoc()) {
+        if ($option['nome'] === 'server_maps') $options['server_maps'] = $option['valor'];
+        if ($option['nome'] === 'camada_mapa') $options['initial_layer'] = $option['valor'];
+    }
+}
+
+echo json_encode(array(
+    'ok' => true,
+    'authenticated' => $authenticatedSession,
+    'generated_at' => date('c'),
+    'summary' => array('total' => count($clients), 'online' => $online, 'offline' => $offline, 'mapped' => $mapped, 'unmapped' => $unmapped),
+    'options' => $options,
+    'providers' => $providers,
+    'clients' => $clients
+), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

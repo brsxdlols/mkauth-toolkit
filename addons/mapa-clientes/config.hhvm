@@ -1,0 +1,6 @@
+<?php
+$link = mysqli_connect('127.0.0.1', 'root', 'vertrigo', 'mkradius');
+if (!$link) {
+    http_response_code(500);
+    exit('Falha ao conectar ao banco de dados.');
+}

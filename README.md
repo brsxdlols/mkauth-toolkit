@@ -50,7 +50,7 @@ No servidor MK-AUTH, como `root`:
 ```bash
 git clone https://github.com/brsxdlols/mkauth-toolkit.git /opt/mkauth-toolkit
 cd /opt/mkauth-toolkit
-./installers/install.sh
+./installers/install-all.sh
 ```
 
 Como o repositório é privado, o clone exige autenticação GitHub. Para servidores sem acesso ao GitHub, gere o instalador autoextraível e envie por SCP.
@@ -63,10 +63,10 @@ No Windows:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\installers\build-release.ps1
 ```
 
-Copie `dist/mkauth-geocodificacao-2.10.3.run` para o servidor e execute:
+Copie `dist/mkauth-geocodificacao-2.12.0.run` para o servidor e execute:
 
 ```bash
-bash /tmp/mkauth-geocodificacao-2.10.3.run
+bash /tmp/mkauth-geocodificacao-2.12.0.run
 ```
 
 ## Reparação após atualização do MK-AUTH
@@ -86,3 +86,21 @@ Cada instalação cria backup em `/root/backups/mk-auth-geocodificacao-*`.
 ```
 
 Consulte [docs/geocodificacao.md](docs/geocodificacao.md) para requisitos, validação e limitações.
+
+## Mapa interativo de clientes
+
+O mesmo toolkit inclui o mapa interativo em `addons/mapa-clientes`, sem alterar
+o funcionamento do addon de geocodificação. A instalação combinada usa:
+
+```bash
+./installers/install-all.sh
+```
+
+Para instalar ou reparar somente o mapa:
+
+```bash
+./installers/install-mapa.sh
+```
+
+Consulte [docs/mapa-clientes.md](docs/mapa-clientes.md) para recursos,
+validação e rollback do mapa.
