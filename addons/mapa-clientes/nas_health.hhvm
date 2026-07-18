@@ -1,0 +1,79 @@
+<?php
+require __DIR__ . '/auth.php';
+require_map_access(true);
+require __DIR__ . '/config.hhvm';
+require_once __DIR__ . '/lib/routeros_api.class.php';
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+$cacheDir = '/var/tmp/mkauth-mapa-clientes';
+$cacheFile = $cacheDir . '/nas-health.json';
+$lockFile = $cacheDir . '/nas-health.lock';
+$ttl = 120;
+if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
+
+function health_output($payload) {
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+function health_cache($file, $ttl, $allowStale) {
+    if (!is_file($file)) return null;
+    $raw = @file_get_contents($file);
+    $data = $raw ? json_decode($raw, true) : null;
+    if (!is_array($data)) return null;
+    if (!$allowStale && (time() - (int)@$data['checked_epoch']) >= $ttl) return null;
+    $data['cached'] = true;
+    return $data;
+}
+
+$cached = health_cache($cacheFile, $ttl, false);
+if ($cached) health_output($cached);
+$lock = @fopen($lockFile, 'c');
+if ($lock && !@flock($lock, LOCK_EX | LOCK_NB)) {
+    $stale = health_cache($cacheFile, $ttl, true);
+    if ($stale) health_output($stale);
+}
+
+$items = array();
+$offline = array();
+$result = mysqli_query($link, "SELECT nasname, shortname, senha FROM nas WHERE nasname IS NOT NULL AND TRIM(nasname) <> '' ORDER BY shortname, nasname");
+if (!$result) health_output(array('ok' => false, 'error' => 'Falha ao consultar os ramais/NAS.'));
+while ($row = mysqli_fetch_assoc($result)) {
+    $ip = trim((string)$row['nasname']);
+    $name = trim((string)$row['shortname']);
+    if ($name === '') $name = $ip;
+    $password = (string)$row['senha'];
+    $status = 'offline';
+    $message = 'API MikroTik n?o respondeu.';
+    if ($password === '') {
+        $message = 'Senha da API n?o cadastrada.';
+    } else {
+        $api = new RouterosAPI();
+        $api->debug = false;
+        $api->timeout = 2;
+        $api->attempts = 1;
+        $api->delay = 0;
+        try {
+            if ($api->connect($ip, 'mkauth', $password)) {
+                $api->write('/system/resource/print');
+                $reply = $api->read(false);
+                $api->disconnect();
+                if (is_array($reply)) {
+                    $status = 'online';
+                    $message = 'API conectada.';
+                }
+            }
+        } catch (Exception $e) {
+            $message = 'Falha ao autenticar ou conectar na API.';
+        }
+    }
+    $item = array('ip' => $ip, 'name' => $name, 'status' => $status, 'message' => $message);
+    $items[] = $item;
+    if ($status !== 'online') $offline[] = $item;
+}
+$payload = array('ok' => true, 'checked_at' => date('c'), 'checked_epoch' => time(), 'ttl' => $ttl, 'nas' => $items, 'offline' => $offline, 'cached' => false);
+@file_put_contents($cacheFile, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+if ($lock) { @flock($lock, LOCK_UN); @fclose($lock); }
+health_output($payload);
+

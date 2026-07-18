@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.16"
+VERSION="1.3.17"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -19,7 +19,7 @@ fail() { echo "ERRO: $*" >&2; exit 1; }
 [ -d "$ADMIN_DIR/addons" ] || fail "diretorio de addons nao encontrado: $ADMIN_DIR/addons"
 [ -d "$CENTRAL_DIR" ] || fail "diretorio central nao encontrado: $CENTRAL_DIR"
 
-for file in VERSION auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm traffic_api.hhvm menu.js assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
+for file in VERSION auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js lib/routeros_api.class.php assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
     [ -f "$SOURCE_DIR/$file" ] || fail "arquivo do pacote ausente: $file"
 done
 
@@ -32,12 +32,13 @@ cp -a "$ADDON_JS" "$BACKUP_DIR/addon.js"
 for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
     if [ -f "$CENTRAL_DIR/$name" ]; then cp -a "$CENTRAL_DIR/$name" "$BACKUP_DIR/central-$name"; else : > "$BACKUP_DIR/central-$name.absent"; fi
 done
-mkdir -p "$ADDON_DIR/assets"
+mkdir -p "$ADDON_DIR/assets" "$ADDON_DIR/lib"
 install -m 0644 "$SOURCE_DIR/VERSION" "$ADDON_DIR/VERSION"
 
-for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm traffic_api.hhvm menu.js; do
+for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js; do
     install -m 0644 "$SOURCE_DIR/$file" "$ADDON_DIR/$file"
 done
+install -m 0644 "$SOURCE_DIR/lib/routeros_api.class.php" "$ADDON_DIR/lib/routeros_api.class.php"
 
 # Integracao minima e idempotente com o menu nativo Clientes.
 sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d' "$ADDON_JS"
@@ -49,7 +50,7 @@ for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
     install -m 0644 "$SOURCE_DIR/central-compat/$name" "$CENTRAL_DIR/$name"
 done
 
-for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm traffic_api.hhvm; do php -l "$ADDON_DIR/$file" >/dev/null; done
+for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm lib/routeros_api.class.php; do php -l "$ADDON_DIR/$file" >/dev/null; done
 for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do php -l "$CENTRAL_DIR/$name" >/dev/null; done
 grep -q 'require_map_access' "$ADDON_DIR/maps.hhvm"
 grep -q '/admin/addons/mapa-clientes/maps.hhvm' "$CENTRAL_DIR/maps.hhvm"
