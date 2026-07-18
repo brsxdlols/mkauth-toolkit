@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.9"
+VERSION="1.3.10"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
