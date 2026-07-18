@@ -12,8 +12,28 @@ function map_access_start_session() {
 }
 
 function map_access_via_admin() {
-    map_access_start_session();
-    return !empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado']);
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado'])) return true;
+        session_write_close();
+        $_SESSION = array();
+    }
+    $sessionIds = array();
+    foreach ($_COOKIE as $name => $value) {
+        if (stripos((string)$name, 'mka') === false) continue;
+        $value = (string)$value;
+        if (preg_match('/^[A-Za-z0-9,-]{16,128}$/', $value)) $sessionIds[] = $value;
+    }
+    foreach (array_unique($sessionIds) as $sessionId) {
+        foreach (array('MKASESSID', 'mka') as $sessionName) {
+            session_name($sessionName);
+            session_id($sessionId);
+            session_start();
+            if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado'])) return true;
+            session_write_close();
+            $_SESSION = array();
+        }
+    }
+    return false;
 }
 
 function map_access_read_store() {
