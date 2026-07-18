@@ -23,4 +23,11 @@ if ($enabled) {
 } else {
     map_access_disable_trusted_device();
 }
-access_response(200, array('ok' => true, 'persistent' => $enabled));
+$adminStillValid = map_access_via_admin();
+access_response(200, array(
+    'ok' => true,
+    'persistent' => $enabled,
+    'admin_session_valid' => $adminStillValid,
+    'redirect' => (!$enabled && !$adminStillValid) ? '/admin/login.php' : '',
+    'csrf' => map_access_csrf()
+));

@@ -120,6 +120,10 @@ function require_map_access($json) {
 }
 
 function map_access_csrf() {
+    if (map_access_via_trusted_device()) {
+        $token = map_access_cookie_token();
+        return hash_hmac('sha256', 'map-access-csrf', $token);
+    }
     map_access_start_session();
     if (empty($_SESSION['map_access_csrf'])) $_SESSION['map_access_csrf'] = bin2hex(random_bytes(24));
     return $_SESSION['map_access_csrf'];

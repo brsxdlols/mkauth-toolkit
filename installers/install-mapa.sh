@@ -8,6 +8,7 @@ SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
 ADMIN_DIR="${MKAUTH_ADMIN:-/opt/mk-auth/admin}"
 CENTRAL_DIR="${MKAUTH_CENTRAL:-/opt/mk-auth/central}"
 ADDON_DIR="$ADMIN_DIR/addons/mapa-clientes"
+MAIN_JS="$ADMIN_DIR/scripts/mk-auth.js"
 STATE_DIR="${MKAUTH_MAP_STATE:-/var/tmp/mkauth-mapa-clientes}"
 STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_ROOT="${MKAUTH_BACKUP_ROOT:-/root/backups}"
@@ -18,7 +19,7 @@ fail() { echo "ERRO: $*" >&2; exit 1; }
 [ -d "$ADMIN_DIR/addons" ] || fail "diretorio de addons nao encontrado: $ADMIN_DIR/addons"
 [ -d "$CENTRAL_DIR" ] || fail "diretorio central nao encontrado: $CENTRAL_DIR"
 
-for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
+for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm menu.js assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
     [ -f "$SOURCE_DIR/$file" ] || fail "arquivo do pacote ausente: $file"
 done
 
@@ -26,14 +27,20 @@ mkdir -p "$BACKUP_DIR" "$STATE_DIR"
 chmod 0770 "$STATE_DIR"
 chown www-data:www-data "$STATE_DIR" 2>/dev/null || true
 if [ -d "$ADDON_DIR" ]; then cp -a "$ADDON_DIR" "$BACKUP_DIR/mapa-clientes-addon"; else : > "$BACKUP_DIR/addon.absent"; fi
+[ -f "$MAIN_JS" ] || fail "javascript principal nao encontrado: $MAIN_JS"
+cp -a "$MAIN_JS" "$BACKUP_DIR/mk-auth.js"
 for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
     if [ -f "$CENTRAL_DIR/$name" ]; then cp -a "$CENTRAL_DIR/$name" "$BACKUP_DIR/central-$name"; else : > "$BACKUP_DIR/central-$name.absent"; fi
 done
 mkdir -p "$ADDON_DIR/assets"
 
-for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
+for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm menu.js; do
     install -m 0644 "$SOURCE_DIR/$file" "$ADDON_DIR/$file"
 done
+
+# Integracao minima e idempotente com o menu nativo Clientes.
+sed -i '/mka-mapa-clientes-menu-js/d' "$MAIN_JS"
+printf '%s\n' ';document.addEventListener("DOMContentLoaded",function(){if(!document.getElementById("mka-mapa-clientes-menu-js")){var s=document.createElement("script");s.id="mka-mapa-clientes-menu-js";s.src="/admin/addons/mapa-clientes/menu.js?v=1.1.0";document.head.appendChild(s);}});' >> "$MAIN_JS"
 for file in MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
     install -m 0644 "$SOURCE_DIR/assets/$file" "$ADDON_DIR/assets/$file"
 done
@@ -45,5 +52,6 @@ for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_
 for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do php -l "$CENTRAL_DIR/$name" >/dev/null; done
 grep -q 'require_map_access' "$ADDON_DIR/maps.hhvm"
 grep -q '/admin/addons/mapa-clientes/maps.hhvm' "$CENTRAL_DIR/maps.hhvm"
+grep -q 'mka-mapa-clientes-menu-js' "$MAIN_JS"
 
 printf 'Mapa protegido instalado.\nVersao: %s\nPagina: /admin/addons/mapa-clientes/maps.hhvm\nBackup: %s\n' "$VERSION" "$BACKUP_DIR"
