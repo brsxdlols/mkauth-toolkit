@@ -39,8 +39,8 @@ for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_
 done
 
 # Integracao minima e idempotente com o menu nativo Clientes.
-sed -i '/mka-mapa-clientes-menu-js/d' "$ADDON_JS"
-printf '%s\n' ';document.addEventListener("DOMContentLoaded",function(){if(!document.getElementById("mka-mapa-clientes-menu-js")){var s=document.createElement("script");s.id="mka-mapa-clientes-menu-js";s.src="/admin/addons/mapa-clientes/menu.js?v=1.1.1";document.head.appendChild(s);}});' >> "$ADDON_JS"
+sed -i '/mka-mapa-clientes-menu/d' "$ADDON_JS"
+printf '%s\n' '// mka-mapa-clientes-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm", "ptext": "Mapa de clientes"}'\'');' >> "$ADDON_JS"
 for file in MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
     install -m 0644 "$SOURCE_DIR/assets/$file" "$ADDON_DIR/assets/$file"
 done
@@ -52,6 +52,6 @@ for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_
 for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do php -l "$CENTRAL_DIR/$name" >/dev/null; done
 grep -q 'require_map_access' "$ADDON_DIR/maps.hhvm"
 grep -q '/admin/addons/mapa-clientes/maps.hhvm' "$CENTRAL_DIR/maps.hhvm"
-grep -q 'mka-mapa-clientes-menu-js' "$ADDON_JS"
+grep -q 'add_menu.clientes.*mapa-clientes/maps.hhvm' "$ADDON_JS"
 
 printf 'Mapa protegido instalado.\nVersao: %s\nPagina: /admin/addons/mapa-clientes/maps.hhvm\nBackup: %s\n' "$VERSION" "$BACKUP_DIR"
