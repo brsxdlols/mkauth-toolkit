@@ -4,11 +4,11 @@ set -eu
 ADMIN_DIR="${MKAUTH_ADMIN:-/opt/mk-auth/admin}"
 CENTRAL_DIR="${MKAUTH_CENTRAL:-/opt/mk-auth/central}"
 ADDON_DIR="$ADMIN_DIR/addons/mapa-clientes"
-MAIN_JS="$ADMIN_DIR/scripts/mk-auth.js"
+ADDON_JS="$ADMIN_DIR/addons/addon.js"
 BACKUP_DIR="${1:-}"
 [ "$(id -u)" -eq 0 ] || { echo "ERRO: execute como root" >&2; exit 1; }
 [ -n "$BACKUP_DIR" ] || { echo "Uso: $0 /root/backups/mk-auth-mapa-clientes-DATA-vVERSAO" >&2; exit 1; }
-[ -f "$BACKUP_DIR/mk-auth.js" ] && cp -a "$BACKUP_DIR/mk-auth.js" "$MAIN_JS"
+[ -f "$BACKUP_DIR/addon.js" ] && cp -a "$BACKUP_DIR/addon.js" "$ADDON_JS"
 [ -d "$BACKUP_DIR" ] || { echo "ERRO: backup inexistente: $BACKUP_DIR" >&2; exit 1; }
 
 if [ -d "$BACKUP_DIR/mapa-clientes-addon" ]; then
