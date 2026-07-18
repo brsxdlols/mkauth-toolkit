@@ -39,7 +39,7 @@ for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_
 done
 
 # Integracao minima e idempotente com o menu nativo Clientes.
-sed -i '/mka-mapa-clientes-menu/d' "$ADDON_JS"
+sed -i '/mka-mapa-clientes-menu/d;/addons\/mapa-clientes\/maps.hhvm/d' "$ADDON_JS"
 printf '%s\n' '// mka-mapa-clientes-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm", "ptext": "<b>🌎 Mapa de clientes</b>"}'\'');' >> "$ADDON_JS"
 for file in MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
     install -m 0644 "$SOURCE_DIR/assets/$file" "$ADDON_DIR/assets/$file"

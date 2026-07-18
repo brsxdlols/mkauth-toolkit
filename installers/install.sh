@@ -46,7 +46,7 @@ printf '\n%s\n' "$LOADER" >> "$MAIN_JS"
 php -l "$ADDON_DIR/geocode.php" >/dev/null
 grep -q 'mka-geocodificacao-js' "$MAIN_JS"
 grep -q 'geocodificacao.js?v=2.10.3' "$MAIN_JS"
-grep -q 'conf_mapas.hhvm' "$MAIN_JS"
+grep -q 'conf_mapas.hhvm' "$ADDON_DIR/geocodificacao.js"
 grep -q 'nativeMapSettings' "$ADDON_DIR/geocodificacao.js"
 
 printf '%s\n' "$VERSION" > "$ADDON_DIR/VERSION"
