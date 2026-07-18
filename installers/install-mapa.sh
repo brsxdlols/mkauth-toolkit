@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -40,7 +40,7 @@ done
 
 # Integracao minima e idempotente com o menu nativo Clientes.
 sed -i '/mka-mapa-clientes-menu/d' "$ADDON_JS"
-printf '%s\n' '// mka-mapa-clientes-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm", "ptext": "Mapa de clientes"}'\'');' >> "$ADDON_JS"
+printf '%s\n' '// mka-mapa-clientes-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm", "ptext": "<b>🌎 Mapa de clientes</b>"}'\'');' >> "$ADDON_JS"
 for file in MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
     install -m 0644 "$SOURCE_DIR/assets/$file" "$ADDON_DIR/assets/$file"
 done
