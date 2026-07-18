@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.10"
+VERSION="1.3.14"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -41,7 +41,7 @@ done
 
 # Integracao minima e idempotente com o menu nativo Clientes.
 sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d' "$ADDON_JS"
-printf '%s\n' '// mka-mapa-clientes-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm", "ptext": "<b>🌎 Mapa de clientes</b>"}'\'');' '// mka-trafego-cliente-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm?monitor=1", "ptext": "<b>📈 Tráfego de cliente</b>"}'\'');' >> "$ADDON_JS"
+printf '%s\n' '// mka-mapa-clientes-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm", "ptext": "<b>?? Mapa de clientes</b>"}'\'');' '// mka-trafego-cliente-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm?monitor=1", "ptext": "<b>?? Tr?fego de cliente</b>"}'\'');' >> "$ADDON_JS"
 for file in MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
     install -m 0644 "$SOURCE_DIR/assets/$file" "$ADDON_DIR/assets/$file"
 done
@@ -54,6 +54,6 @@ for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
 grep -q 'require_map_access' "$ADDON_DIR/maps.hhvm"
 grep -q '/admin/addons/mapa-clientes/maps.hhvm' "$CENTRAL_DIR/maps.hhvm"
 grep -q 'add_menu.clientes.*mapa-clientes/maps.hhvm' "$ADDON_JS"
-grep -q 'Tráfego de cliente' "$ADDON_JS"
+grep -q 'Tr?fego de cliente' "$ADDON_JS"
 
 printf 'Mapa protegido instalado.\nVersao: %s\nPagina: /admin/addons/mapa-clientes/maps.hhvm\nBackup: %s\n' "$VERSION" "$BACKUP_DIR"
