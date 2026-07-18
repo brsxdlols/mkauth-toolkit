@@ -1,12 +1,7 @@
 <?php
-$authenticatedSession = false;
-foreach ($_COOKIE as $cookieName => $cookieValue) {
-    if (stripos((string)$cookieName, 'mka') !== false && preg_match('/^[A-Za-z0-9,-]{16,128}$/', (string)$cookieValue)) {
-        session_name('MKASESSID'); session_id((string)$cookieValue); session_start();
-        if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado'])) { $authenticatedSession = true; break; }
-        session_write_close(); $_SESSION = array();
-    }
-}
+require __DIR__ . '/auth.php';
+require_map_access(true);
+$authenticatedSession = true;
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
@@ -16,13 +11,10 @@ function respond($status, $payload) {
     exit;
 }
 
-if (!$authenticatedSession) {
-    respond(401, array('ok' => false, 'error' => 'Sessão administrativa necessária. Entre novamente no MK-AUTH.'));
-}
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, array('ok' => false, 'error' => 'Método não permitido.'));
 
 $token = isset($_POST['csrf']) ? (string)$_POST['csrf'] : '';
-if (!isset($_SESSION['map_coord_csrf']) || !hash_equals($_SESSION['map_coord_csrf'], $token)) {
+if (!hash_equals(map_access_csrf(), $token)) {
     respond(403, array('ok' => false, 'error' => 'Token de segurança inválido. Atualize a página.'));
 }
 

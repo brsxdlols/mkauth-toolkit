@@ -1,0 +1,25 @@
+<?php
+require __DIR__ . '/auth.php';
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+map_access_start_session();
+
+function access_response($status, $payload) {
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') access_response(405, array('ok' => false, 'error' => 'Método não permitido.'));
+$csrf = isset($_POST['csrf']) ? (string)$_POST['csrf'] : '';
+if (!hash_equals(map_access_csrf(), $csrf)) access_response(403, array('ok' => false, 'error' => 'Token de segurança inválido.'));
+$enabled = isset($_POST['enabled']) && $_POST['enabled'] === '1';
+
+if ($enabled) {
+    if (!map_access_via_admin()) access_response(401, array('ok' => false, 'error' => 'Entre no MK-AUTH para autorizar este dispositivo.'));
+    if (!map_access_enable_trusted_device()) access_response(500, array('ok' => false, 'error' => 'Não foi possível salvar a autorização.'));
+} else {
+    if (!map_access_authorized()) access_response(401, array('ok' => false, 'error' => 'Acesso encerrado.'));
+    map_access_disable_trusted_device();
+}
+access_response(200, array('ok' => true, 'persistent' => $enabled));

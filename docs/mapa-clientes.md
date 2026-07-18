@@ -1,6 +1,6 @@
 # Mapa interativo de clientes
 
-O módulo instala o mapa em `/central/maps.hhvm` sem substituir o addon de geocodificação administrativa.
+O módulo instala o mapa protegido em `/admin/addons/mapa-clientes/maps.hhvm` sem substituir o addon de geocodificação administrativa. A URL antiga `/central/maps.hhvm` apenas redireciona para a área protegida.
 
 ## Recursos
 
@@ -11,6 +11,8 @@ O módulo instala o mapa em `/central/maps.hhvm` sem substituir o addon de geoco
 - notificações, alerta de queda em massa, sirene opcional e demonstração;
 - cadastro manual ou por pesquisa de coordenadas, protegido por sessão e CSRF;
 - modo tela cheia, temas Dark e White e painel lateral recolhível.
+- acesso obrigatório por sessão administrativa ou dispositivo confiável autorizado;
+- opção "Manter acesso ao mapa neste dispositivo", sem armazenar usuário ou senha.
 
 ## Instalação somente do mapa
 
@@ -31,7 +33,7 @@ O instalador cria backup individual em `/root/backups/mk-auth-mapa-clientes-*`.
 ## Rollback
 
 ```sh
-sh installers/rollback-mapa.sh /root/backups/mk-auth-mapa-clientes-AAAAmmdd-HHMMSS-v1.0.0
+sh installers/rollback-mapa.sh /root/backups/mk-auth-mapa-clientes-AAAAmmdd-HHMMSS-v1.1.0
 ```
 
 Nenhuma credencial, senha ou chave de mapas é incluída no repositório.

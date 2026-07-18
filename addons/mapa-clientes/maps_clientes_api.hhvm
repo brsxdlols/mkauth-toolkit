@@ -1,13 +1,8 @@
 <?php
-$authenticatedSession = false;
-foreach ($_COOKIE as $cookieName => $cookieValue) {
-    if (stripos((string)$cookieName, 'mka') !== false && preg_match('/^[A-Za-z0-9,-]{16,128}$/', (string)$cookieValue)) {
-        session_name('MKASESSID'); session_id((string)$cookieValue); session_start();
-        if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado'])) { $authenticatedSession = true; break; }
-        session_write_close(); $_SESSION = array();
-    }
-}
-include 'config.hhvm';
+require __DIR__ . '/auth.php';
+require_map_access(true);
+$authenticatedSession = true;
+require __DIR__ . '/config.hhvm';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
