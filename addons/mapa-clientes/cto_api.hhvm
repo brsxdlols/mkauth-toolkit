@@ -6,20 +6,70 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 $addonDir = dirname(__DIR__) . '/caixas';
-$installed = is_dir($addonDir) && is_file($addonDir . '/index.php');
+$installed = is_dir($addonDir) && (is_file($addonDir . '/index.php') || is_file($addonDir . '/index.hhvm'));
 $table = mysqli_query($link, "SHOW TABLES LIKE 'mp_caixa'");
 $installed = $installed && $table && mysqli_num_rows($table) > 0;
 if (!$installed) {
     echo json_encode(array('ok' => true, 'installed' => false, 'ctos' => array()), JSON_UNESCAPED_UNICODE);
     exit;
 }
+
+$hasCtoId = false;
+$column = mysqli_query($link, "SHOW COLUMNS FROM sis_cliente LIKE 'cto_id'");
+if ($column && mysqli_num_rows($column) > 0) $hasCtoId = true;
+
 $ctos = array();
-$result = mysqli_query($link, "SELECT id, nome, latitude, longitude, endereco, tipo, capacidade FROM mp_caixa WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND TRIM(latitude) <> '' AND TRIM(longitude) <> ''");
+$result = mysqli_query($link, "SELECT id, nome, latitude, longitude, endereco, tipo, capacidade, sinal, olt, fsp FROM mp_caixa WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND TRIM(latitude) <> '' AND TRIM(longitude) <> '' ORDER BY nome");
 if ($result) while ($row = mysqli_fetch_assoc($result)) {
     $lat = (float)str_replace(',', '.', $row['latitude']);
     $lon = (float)str_replace(',', '.', $row['longitude']);
     if ($lat < -90 || $lat > 90 || $lon < -180 || $lon > 180 || ($lat == 0 && $lon == 0)) continue;
-    $ctos[] = array('id' => (int)$row['id'], 'name' => $row['nome'], 'lat' => $lat, 'lon' => $lon, 'address' => $row['endereco'], 'type' => $row['tipo'], 'capacity' => (int)$row['capacidade']);
-}
-echo json_encode(array('ok' => true, 'installed' => true, 'ctos' => $ctos), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
+    $ctoId = (int)$row['id'];
+    $ctoName = mysqli_real_escape_string($link, $row['nome']);
+    $where = "TRIM(sc.caixa_herm) = TRIM('$ctoName')";
+    if ($hasCtoId) $where = "(sc.cto_id = $ctoId OR $where)";
+    $clients = array();
+    $clientSql = "SELECT sc.login, sc.nome, sc.porta_splitter, sc.coordenadas
+                    FROM sis_cliente sc
+                   WHERE $where
+                   ORDER BY CAST(sc.porta_splitter AS UNSIGNED), sc.porta_splitter, sc.nome";
+    $clientResult = mysqli_query($link, $clientSql);
+    if ($clientResult) while ($client = mysqli_fetch_assoc($clientResult)) {
+        $clientLat = null;
+        $clientLon = null;
+        $parts = preg_split('/\s*[,;]\s*/', trim((string)$client['coordenadas']));
+        if (count($parts) >= 2) {
+            $candidateLat = (float)str_replace(',', '.', $parts[0]);
+            $candidateLon = (float)str_replace(',', '.', $parts[1]);
+            if ($candidateLat >= -90 && $candidateLat <= 90 && $candidateLon >= -180 && $candidateLon <= 180 && !($candidateLat == 0 && $candidateLon == 0)) {
+                $clientLat = $candidateLat;
+                $clientLon = $candidateLon;
+            }
+        }
+        $clients[] = array(
+            'login' => $client['login'],
+            'name' => $client['nome'],
+            'port' => $client['porta_splitter'],
+            'lat' => $clientLat,
+            'lon' => $clientLon
+        );
+    }
+
+    $ctos[] = array(
+        'id' => $ctoId,
+        'name' => $row['nome'],
+        'number' => preg_match('/(\d+)\s*$/', $row['nome'], $matches) ? $matches[1] : '',
+        'lat' => $lat,
+        'lon' => $lon,
+        'address' => $row['endereco'],
+        'type' => $row['tipo'],
+        'capacity' => (int)$row['capacidade'],
+        'signal' => $row['sinal'],
+        'olt' => $row['olt'],
+        'fsp' => $row['fsp'],
+        'clients' => $clients
+    );
+}
+
+echo json_encode(array('ok' => true, 'installed' => true, 'ctos' => $ctos), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
