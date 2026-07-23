@@ -9,7 +9,7 @@ LOG_FILE="/var/log/mkauth_radius_ppp_reconcile.log"
 STATE_DIR="/var/lib/mkauth_radius_ppp_reconcile"
 STATE_FILE="$STATE_DIR/status.json"
 ADMIN_DIR="/opt/mk-auth/admin"
-DASHBOARD_DIR="/opt/mk-auth/admin/addons/dashboard"
+DASHBOARD_DIR="$ADMIN_DIR/addons/dashboard"
 DASHBOARD_INDEX="$DASHBOARD_DIR/index.php"
 DASHBOARD_STATUS="$DASHBOARD_DIR/radius_status.php"
 
@@ -399,67 +399,6 @@ if [ -d "$ADMIN_DIR" ]; then
   cp -a "$DASHBOARD_STATUS" "$ADMIN_DIR/radius_status.php"
   chmod 644 "$ADMIN_DIR/radius_status.php"
 fi
-
-cat > /tmp/mkauth_patch_dashboard_online_counts.php <<'PHP'
-<?php
-error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE);
-
-$backupDir = getenv('MKAUTH_RECONCILE_BACKUP_DIR') ?: '/root/mkauth_radius_reconcile_backup';
-$adminRoot = '/opt/mk-auth/admin';
-$candidates = array(
-    $adminRoot . '/index.php',
-    $adminRoot . '/index.hhvm',
-    $adminRoot . '/indexnovo.hhvm',
-    $adminRoot . '/addons/dashboard/index.php',
-);
-
-if (is_dir($adminRoot . '/addons/dashboard')) {
-    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($adminRoot . '/addons/dashboard', FilesystemIterator::SKIP_DOTS));
-    foreach ($it as $file) {
-        if (!$file->isFile()) continue;
-        $path = $file->getPathname();
-        if (!preg_match('/\.(php|hhvm)$/i', $path)) continue;
-        $candidates[] = $path;
-    }
-}
-
-$candidates = array_values(array_unique($candidates));
-$changed = 0;
-
-foreach ($candidates as $path) {
-    if (!is_file($path) || !is_readable($path) || !is_writable($path)) continue;
-    $text = file_get_contents($path);
-    if ($text === false) continue;
-    if (strpos($text, '$query_clientes_online') === false || strpos($text, '$query_clientes_adicionais') === false || strpos($text, '$cli_on++') === false) continue;
-
-    $original = $text;
-    $text = preg_replace(
-        '/\$query_clientes_online\s*=\s*mysqli_query\(\$conn,\s*"[^"]*acctstoptime\s+IS\s+NULL[^"]*"\);/is',
-        '$query_clientes_online = mysqli_query($conn, "SELECT DISTINCT LOWER(TRIM(r.username)) AS username FROM radacct r LEFT JOIN sis_cliente c ON c.login = r.username WHERE $grupos c.cli_ativado LIKE \'s\' AND r.acctstoptime IS NULL UNION SELECT DISTINCT LOWER(TRIM(r.username)) AS username FROM radacct r LEFT JOIN sis_adicional cli_add ON r.username = cli_add.username LEFT JOIN sis_cliente c ON cli_add.login = c.login WHERE $grupos c.cli_ativado LIKE \'s\' AND r.acctstoptime IS NULL");',
-        $text
-    );
-    $text = preg_replace(
-        '/\$query_clientes_adicionais\s*=\s*mysqli_query\(\$conn,\s*"SELECT\s+cli_add\.(?:login|username)\s+as\s+login_add\s+FROM\s+sis_adicional\s+cli_add\s+LEFT\s+JOIN\s+sis_cliente\s+c\s+ON\s+cli_add\.login\s*=\s*c\.login\s+WHERE\s+\$grupos\s+c\.cli_ativado\s+LIKE\s+\'s\'"\);/i',
-        '$query_clientes_adicionais = mysqli_query($conn, "SELECT cli_add.username as login_add FROM sis_adicional cli_add LEFT JOIN sis_cliente c ON cli_add.login = c.login WHERE $grupos c.cli_ativado LIKE \'s\'");',
-        $text
-    );
-    $text = preg_replace('/\s*\$cli_on\s*=\s*count\(\$username_on\);\s*\/\/ Ajuste: total online real do radacct\/PPP Active\s*/i', "\n", $text);
-
-    if ($text !== $original) {
-        $relative = ltrim(str_replace($adminRoot, '', $path), '/');
-        $backupPath = rtrim($backupDir, '/') . '/dashboard_online_counts/' . $relative . '.bak';
-        if (!is_dir(dirname($backupPath))) mkdir(dirname($backupPath), 0755, true);
-        copy($path, $backupPath);
-        file_put_contents($path, $text);
-        echo "DASHBOARD_ONLINE_PATCH file=$path backup=$backupPath\n";
-        $changed++;
-    }
-}
-
-echo "DASHBOARD_ONLINE_PATCH_SUMMARY changed=$changed\n";
-PHP
-MKAUTH_RECONCILE_BACKUP_DIR="$BACKUP_DIR" php /tmp/mkauth_patch_dashboard_online_counts.php || true
-rm -f /tmp/mkauth_patch_dashboard_online_counts.php
 
 for DASHBOARD_INDEX in "$DASHBOARD_DIR/index.php" "$ADMIN_DIR/index.php" "$ADMIN_DIR/index.hhvm" "$ADMIN_DIR/indexnovo.hhvm"; do
 if [ -f "$DASHBOARD_INDEX" ] && ! grep -q "mkauth-radius-alert-start" "$DASHBOARD_INDEX"; then
