@@ -434,8 +434,8 @@ foreach ($candidates as $path) {
 
     $original = $text;
     $text = preg_replace(
-        '/\$query_clientes_online\s*=\s*mysqli_query\(\$conn,\s*"SELECT\s+(?:r\.)?username\s+FROM\s+radacct\s+r\s+LEFT\s+JOIN\s+sis_cliente\s+c\s+ON\s+c\.login\s*=\s*r\.username\s+WHERE\s+\$grupos\s+(?:c\.cli_ativado\s+LIKE\s+\'s\'\s+AND\s+)?r\.acctstoptime\s+IS\s+NULL\s*(?:UNION\s+SELECT\s+r\.username\s+FROM\s+radacct\s+r\s+LEFT\s+JOIN\s+sis_adicional\s+cli_add\s+ON\s+r\.username\s*=\s*cli_add\.username\s+LEFT\s+JOIN\s+sis_cliente\s+c\s+ON\s+cli_add\.login\s*=\s*c\.login\s+WHERE\s+\$grupos\s+c\.cli_ativado\s+LIKE\s+\'s\'\s+AND\s+r\.acctstoptime\s+IS\s+NULL)?"\);/i',
-        '$query_clientes_online = mysqli_query($conn, "SELECT DISTINCT LOWER(TRIM(username)) AS username FROM radacct WHERE acctstoptime IS NULL");',
+        '/\$query_clientes_online\s*=\s*mysqli_query\(\$conn,\s*"[^"]*acctstoptime\s+IS\s+NULL[^"]*"\);/is',
+        '$query_clientes_online = mysqli_query($conn, "SELECT DISTINCT LOWER(TRIM(r.username)) AS username FROM radacct r LEFT JOIN sis_cliente c ON c.login = r.username WHERE $grupos c.cli_ativado LIKE \'s\' AND r.acctstoptime IS NULL UNION SELECT DISTINCT LOWER(TRIM(r.username)) AS username FROM radacct r LEFT JOIN sis_adicional cli_add ON r.username = cli_add.username LEFT JOIN sis_cliente c ON cli_add.login = c.login WHERE $grupos c.cli_ativado LIKE \'s\' AND r.acctstoptime IS NULL");',
         $text
     );
     $text = preg_replace(
@@ -443,13 +443,7 @@ foreach ($candidates as $path) {
         '$query_clientes_adicionais = mysqli_query($conn, "SELECT cli_add.username as login_add FROM sis_adicional cli_add LEFT JOIN sis_cliente c ON cli_add.login = c.login WHERE $grupos c.cli_ativado LIKE \'s\'");',
         $text
     );
-    if (strpos($text, '$cli_on = count($username_on); // Ajuste: total online real do radacct') === false) {
-        $text = preg_replace(
-            '/(\s*while\s*\(\$row\s*=\s*mysqli_fetch_array\(\$query_clientes_adicionais\)\)\s*\{\s*if\s*\(\$username_on\[trim\(strtolower\(\$row\[\'login_add\'\]\)\)\]\)\s*\{\s*\$cli_on\+\+;\s*\}\s*\$c_add\+\+;\s*\}\s*)/i',
-            "$1\n        \$cli_on = count(\$username_on); // Ajuste: total online real do radacct/PPP Active\n",
-            $text
-        );
-    }
+    $text = preg_replace('/\s*\$cli_on\s*=\s*count\(\$username_on\);\s*\/\/ Ajuste: total online real do radacct\/PPP Active\s*/i', "\n", $text);
 
     if ($text !== $original) {
         $relative = ltrim(str_replace($adminRoot, '', $path), '/');
