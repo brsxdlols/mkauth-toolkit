@@ -63,10 +63,10 @@ No Windows:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\installers\build-release.ps1
 ```
 
-Copie `dist/mkauth-geocodificacao-2.14.22.run` para o servidor e execute:
+Copie `dist/mkauth-geocodificacao-2.14.21.run` para o servidor e execute:
 
 ```bash
-bash /tmp/mkauth-geocodificacao-2.14.22.run
+bash /tmp/mkauth-geocodificacao-2.14.21.run
 ```
 
 ## Repara??o ap?s atualiza??o do MK-AUTH
@@ -104,3 +104,29 @@ Para instalar ou reparar somente o mapa:
 
 Consulte [docs/mapa-clientes.md](docs/mapa-clientes.md) para recursos,
 valida??o e rollback do mapa.
+
+## Reconciliador Radius/PPP Online
+
+Instalador para corrigir clientes PPPoE que continuam conectados no MikroTik,
+mas ficam offline no MK-AUTH por perda de accounting/interim update. O script
+consulta os ramais cadastrados em `nas`, busca apenas conexoes PPPoE ativas no
+MikroTik e reabre/insere sessoes em `radacct` quando necessario.
+
+Instalacao direta com `curl`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brsxdlols/mkauth-toolkit/main/installers/install-radius-reconcile.sh -o /root/install-radius-reconcile.sh && chmod +x /root/install-radius-reconcile.sh && sh /root/install-radius-reconcile.sh
+```
+
+Instalacao direta com `wget`:
+
+```bash
+wget -O /root/install-radius-reconcile.sh https://raw.githubusercontent.com/brsxdlols/mkauth-toolkit/main/installers/install-radius-reconcile.sh && chmod +x /root/install-radius-reconcile.sh && sh /root/install-radius-reconcile.sh
+```
+
+Depois de instalado, o cron roda automaticamente a cada 2 minutos. Para aplicar
+manualmente:
+
+```bash
+php /opt/mk-auth/scripts/mkauth_radius_ppp_reconcile.php --apply
+```
