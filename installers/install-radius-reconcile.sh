@@ -8,6 +8,7 @@ BACKUP_DIR="/root/mkauth_radius_reconcile_backup_$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="/var/log/mkauth_radius_ppp_reconcile.log"
 STATE_DIR="/var/lib/mkauth_radius_ppp_reconcile"
 STATE_FILE="$STATE_DIR/status.json"
+ADMIN_DIR="/opt/mk-auth/admin"
 DASHBOARD_DIR="/opt/mk-auth/admin/addons/dashboard"
 DASHBOARD_INDEX="$DASHBOARD_DIR/index.php"
 DASHBOARD_STATUS="$DASHBOARD_DIR/radius_status.php"
@@ -394,6 +395,10 @@ $data['ok'] = empty($data['failed_routers']);
 echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 PHP
 chmod 644 "$DASHBOARD_STATUS"
+if [ -d "$ADMIN_DIR" ]; then
+  cp -a "$DASHBOARD_STATUS" "$ADMIN_DIR/radius_status.php"
+  chmod 644 "$ADMIN_DIR/radius_status.php"
+fi
 
 cat > /tmp/mkauth_patch_dashboard_online_counts.php <<'PHP'
 <?php
@@ -462,6 +467,7 @@ PHP
 MKAUTH_RECONCILE_BACKUP_DIR="$BACKUP_DIR" php /tmp/mkauth_patch_dashboard_online_counts.php || true
 rm -f /tmp/mkauth_patch_dashboard_online_counts.php
 
+for DASHBOARD_INDEX in "$DASHBOARD_DIR/index.php" "$ADMIN_DIR/index.php" "$ADMIN_DIR/index.hhvm" "$ADMIN_DIR/indexnovo.hhvm"; do
 if [ -f "$DASHBOARD_INDEX" ] && ! grep -q "mkauth-radius-alert-start" "$DASHBOARD_INDEX"; then
   tmp_file="/tmp/mkauth_dashboard_index.$$"
   snippet_file="/tmp/mkauth_radius_alert_snippet.$$"
@@ -517,6 +523,7 @@ HTML
   cat "$tmp_file" > "$DASHBOARD_INDEX"
   rm -f "$tmp_file" "$snippet_file"
 fi
+done
 
 echo "Backup criado em: $BACKUP_DIR"
 echo "Rodando teste sem alterar banco..."
