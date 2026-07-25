@@ -205,11 +205,17 @@
     function init() {
         var coord = document.getElementById('coordenadas');
         var form = document.getElementById('form');
-        if (!coord || !form || !document.getElementById('endereco')) return;
+        var isAdditional = window.location.pathname.indexOf('adicional_alt.hhvm') !== -1;
+        if (!coord || !form || (!document.getElementById('endereco') && !document.getElementById('end_endereco'))) return;
 
         var fields = {};
-        var residentialIds = { cep:'cep_res', endereco:'endereco_res', numero:'numero_res', bairro:'bairro_res', cidade:'cidade_res', estado:'estado_res' };
-        Object.keys(residentialIds).forEach(function (id) { fields[id] = document.getElementById(residentialIds[id]); });
+        var residentialIds = isAdditional
+            ? { cep:'end_cep', endereco:'end_endereco', numero:'end_numero', bairro:'end_bairro', cidade:'end_cidade', estado:'end_estado' }
+            : { cep:'cep_res', endereco:'endereco_res', numero:'numero_res', bairro:'bairro_res', cidade:'cidade_res', estado:'estado_res' };
+        Object.keys(residentialIds).forEach(function (id) {
+            fields[id] = document.getElementById(residentialIds[id]) ||
+                document.getElementById(isAdditional ? id : residentialIds[id]);
+        });
         fields.ibge = document.getElementById('cidade_ibge');
 
         var style = document.createElement('style');
