@@ -168,13 +168,38 @@ freeradius -XC >/tmp/mkauth-radius-stability-check.log 2>&1
 
 echo "Reiniciando MariaDB..."
 timeout 120 service mysql restart
-sleep 8
-"${mysql_cmd[@]}" --connect-timeout=5 -NBe "SELECT 1" | grep -qx 1
+
+echo "Aguardando o MariaDB aceitar consultas..."
+mysql_ready=0
+for attempt in $(seq 1 90); do
+    if [[ -S /var/run/mysqld/mysqld.sock ]] &&
+       "${mysql_cmd[@]}" --connect-timeout=3 -NBe "SELECT 1" 2>/dev/null | grep -qx 1; then
+        mysql_ready=1
+        break
+    fi
+    sleep 1
+done
+if [[ $mysql_ready -ne 1 ]]; then
+    echo "ERRO: MariaDB não ficou pronto em 90 segundos; o FreeRADIUS não será reiniciado." >&2
+    exit 1
+fi
 
 echo "Reiniciando FreeRADIUS..."
-timeout 90 service freeradius restart
+if ! timeout 90 service freeradius restart; then
+    echo "Primeira tentativa falhou; aguardando e tentando iniciar novamente..."
+    sleep 10
+    timeout 90 service freeradius start || true
+fi
 sleep 5
-"$WATCHDOG"
+if ! "$WATCHDOG"; then
+    echo "ERRO: validação final falhou. Restaurando a configuração do FreeRADIUS..." >&2
+    cp -a "$BACKUP_DIR/radiusd.conf" "$RADIUS_CONF"
+    cp -a "$BACKUP_DIR/freeradius-default" "$RADIUS_SITE"
+    if freeradius -XC >/tmp/mkauth-radius-stability-rollback.log 2>&1; then
+        timeout 90 service freeradius restart || timeout 90 service freeradius start || true
+    fi
+    exit 1
+fi
 
 echo
 echo "Instalação concluída."
