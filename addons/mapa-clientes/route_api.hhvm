@@ -1,0 +1,51 @@
+<?php
+require __DIR__ . '/auth.php';
+require_map_access(true);
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: private, max-age=300');
+
+$coords = isset($_GET['coords']) ? trim($_GET['coords']) : '';
+if (!preg_match('/^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?;-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$/', $coords)) {
+    http_response_code(400);
+    echo json_encode(array('code' => 'InvalidOptions', 'message' => 'Coordenadas inválidas.'));
+    exit;
+}
+
+$cache_file = sys_get_temp_dir() . '/mkauth_route_' . sha1($coords) . '.json';
+if (is_file($cache_file) && filemtime($cache_file) > time() - 900) {
+    readfile($cache_file);
+    exit;
+}
+
+$url = 'https://router.project-osrm.org/route/v1/driving/' . $coords
+    . '?overview=full&geometries=geojson&steps=false';
+$ch = curl_init($url);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 4);
+curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+curl_setopt($ch, CURLOPT_USERAGENT, 'MK-AUTH-Mapa-Clientes/1.0');
+$body = curl_exec($ch);
+$status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$error = curl_error($ch);
+curl_close($ch);
+
+if ($body === false || $status < 200 || $status >= 300) {
+    http_response_code(502);
+    echo json_encode(array(
+        'code' => 'RouteUnavailable',
+        'message' => $error !== '' ? $error : 'Serviço de rotas indisponível.',
+    ));
+    exit;
+}
+
+$decoded = json_decode($body, true);
+if (!is_array($decoded)) {
+    http_response_code(502);
+    echo json_encode(array('code' => 'InvalidResponse', 'message' => 'Resposta inválida do serviço de rotas.'));
+    exit;
+}
+
+@file_put_contents($cache_file, $body, LOCK_EX);
+echo $body;
