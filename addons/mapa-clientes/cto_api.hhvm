@@ -55,6 +55,32 @@ if ($result) while ($row = mysqli_fetch_assoc($result)) {
             'lon' => $clientLon
         );
     }
+    $additionalSql = "SELECT sa.username AS login, sa.nome, sa.porta_splitter, sa.coordenadas
+                        FROM sis_adicional sa
+                       WHERE TRIM(sa.caixa_herm) = TRIM('$ctoName')
+                       ORDER BY CAST(sa.porta_splitter AS UNSIGNED), sa.porta_splitter, sa.nome";
+    $additionalResult = mysqli_query($link, $additionalSql);
+    if ($additionalResult) while ($client = mysqli_fetch_assoc($additionalResult)) {
+        $clientLat = null;
+        $clientLon = null;
+        $parts = preg_split('/\s*[,;]\s*/', trim((string)$client['coordenadas']));
+        if (count($parts) >= 2 && is_numeric($parts[0]) && is_numeric($parts[1])) {
+            $candidateLat = (float)$parts[0];
+            $candidateLon = (float)$parts[1];
+            if ($candidateLat >= -90 && $candidateLat <= 90 && $candidateLon >= -180 && $candidateLon <= 180 && !($candidateLat == 0 && $candidateLon == 0)) {
+                $clientLat = $candidateLat;
+                $clientLon = $candidateLon;
+            }
+        }
+        $clients[] = array(
+            'login' => $client['login'],
+            'name' => $client['nome'],
+            'port' => $client['porta_splitter'],
+            'lat' => $clientLat,
+            'lon' => $clientLon,
+            'is_additional' => true
+        );
+    }
 
     $ctos[] = array(
         'id' => $ctoId,

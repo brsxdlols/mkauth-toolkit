@@ -27,6 +27,7 @@ function clean_value($value) {
 
 $sql = "
 SELECT
+    'primary' AS client_kind,
     c.id, c.uuid_cliente, c.nome, c.login, c.coordenadas, c.plano, c.ssid, c.tipo,
     c.bloqueado,
     c.cep, c.endereco, c.numero, c.bairro, c.cidade, c.estado, c.complemento,
@@ -66,6 +67,46 @@ if (!$result) {
     exit;
 }
 
+$additionalSql = "
+SELECT
+    'additional' AS client_kind,
+    a.id, a.uuid_adicional AS uuid_cliente, a.nome, a.username AS login,
+    a.coordenadas, a.plano, NULL AS ssid, 'adicional' AS tipo, a.bloqueado,
+    a.end_cep AS cep, a.end_endereco AS endereco, a.end_numero AS numero,
+    a.end_bairro AS bairro, a.end_cidade AS cidade, a.end_estado AS estado,
+    a.end_complemento AS complemento,
+    a.ramal, a.mac AS cadastro_mac, a.ip AS cadastro_ip, a.interface,
+    a.porta_olt, a.caixa_herm, a.porta_splitter, a.onu_ont,
+    CASE WHEN open_s.radacctid IS NULL THEN 'offline' ELSE 'online' END AS status,
+    COALESCE(open_s.session_count, 0) AS session_count,
+    open_r.acctstarttime, open_r.acctupdatetime, open_r.acctsessiontime,
+    open_r.framedipaddress, open_r.callingstationid, open_r.nasipaddress,
+    open_r.nasportid, open_r.nasporttype,
+    last_r.acctstarttime AS last_starttime,
+    last_r.acctstoptime AS last_stoptime,
+    last_r.acctterminatecause AS last_terminatecause
+FROM sis_adicional a
+LEFT JOIN (
+    SELECT username, MAX(radacctid) AS radacctid, COUNT(*) AS session_count
+    FROM radacct
+    WHERE acctstoptime IS NULL
+    GROUP BY username
+) open_s ON open_s.username = a.username
+LEFT JOIN radacct open_r ON open_r.radacctid = open_s.radacctid
+LEFT JOIN radacct last_r ON last_r.radacctid = (
+    SELECT rr.radacctid
+    FROM radacct rr
+    WHERE rr.username = a.username AND rr.acctstoptime IS NOT NULL
+    ORDER BY rr.radacctid DESC
+    LIMIT 1
+)
+WHERE COALESCE(TRIM(a.username), '') <> ''
+ORDER BY a.nome, a.username
+";
+$additionalResult = $link->query($additionalSql);
+$results = array($result);
+if ($additionalResult) $results[] = $additionalResult;
+
 $clients = array();
 $online = 0;
 $offline = 0;
@@ -73,7 +114,7 @@ $mapped = 0;
 $unmapped = 0;
 $serverNow = time();
 
-while ($row = $result->fetch_assoc()) {
+foreach ($results as $clientResult) while ($row = $clientResult->fetch_assoc()) {
     $lat = coord_value($row['coordenadas'], 0);
     $lon = coord_value($row['coordenadas'], 1);
     $hasCoordinates = ($lat !== null && $lon !== null);
@@ -88,6 +129,8 @@ while ($row = $result->fetch_assoc()) {
 
     $clients[] = array(
         'id' => (int)$row['id'],
+        'client_kind' => $row['client_kind'],
+        'is_additional' => ($row['client_kind'] === 'additional'),
         'uuid' => $authenticatedSession ? clean_value($row['uuid_cliente']) : null,
         'name' => clean_value($row['nome']),
         'login' => clean_value($row['login']),
