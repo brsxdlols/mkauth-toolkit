@@ -21,4 +21,5 @@ for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
     if [ -f "$BACKUP_DIR/central-$name" ]; then cp -a "$BACKUP_DIR/central-$name" "$CENTRAL_DIR/$name"; fi
     if [ -f "$BACKUP_DIR/central-$name.absent" ]; then rm -f "$CENTRAL_DIR/$name"; fi
 done
+[ -f "$BACKUP_DIR/dashboard-top.php" ] && cp -a "$BACKUP_DIR/dashboard-top.php" "$ADMIN_DIR/addons/dashboard/mkauth_dashboard_top.php"
 echo "Rollback do mapa concluido a partir de: $BACKUP_DIR"

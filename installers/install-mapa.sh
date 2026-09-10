@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.24"
+VERSION="1.3.26"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -19,7 +19,7 @@ fail() { echo "ERRO: $*" >&2; exit 1; }
 [ -d "$ADMIN_DIR/addons" ] || fail "diretorio de addons nao encontrado: $ADMIN_DIR/addons"
 [ -d "$CENTRAL_DIR" ] || fail "diretorio central nao encontrado: $CENTRAL_DIR"
 
-for file in VERSION auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js lib/routeros_api.class.php assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
+for file in VERSION index.hhvm auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js lib/routeros_api.class.php assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
     [ -f "$SOURCE_DIR/$file" ] || fail "arquivo do pacote ausente: $file"
 done
 
@@ -35,14 +35,26 @@ done
 mkdir -p "$ADDON_DIR/assets" "$ADDON_DIR/lib"
 install -m 0644 "$SOURCE_DIR/VERSION" "$ADDON_DIR/VERSION"
 
-for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js; do
+for file in index.hhvm auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js; do
     install -m 0644 "$SOURCE_DIR/$file" "$ADDON_DIR/$file"
 done
 install -m 0644 "$SOURCE_DIR/lib/routeros_api.class.php" "$ADDON_DIR/lib/routeros_api.class.php"
 
-# Integracao minima e idempotente com o menu nativo Clientes.
-sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d' "$ADDON_JS"
-printf '%s\n' '// mka-mapa-clientes-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm", "ptext": "<b>?? Mapa de clientes</b>"}'\'');' '// mka-trafego-cliente-menu' 'add_menu.clientes('\''{"plink": "'\'' + minha_url + '\''addons/mapa-clientes/maps.hhvm?monitor=1", "ptext": "<b>?? Tr?fego de cliente</b>"}'\'');' >> "$ADDON_JS"
+# Integra atalhos apos o carregamento dos menus nativos e do dashboard.
+sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d;/mka-map-shortcut-loader/d' "$ADDON_JS"
+cat >> "$ADDON_JS" <<'JS'
+(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.26';(document.head||document.documentElement).appendChild(s);})();
+JS
+DASH_TOP="$ADMIN_DIR/addons/dashboard/mkauth_dashboard_top.php"
+if [ -f "$DASH_TOP" ]; then
+    cp -a "$DASH_TOP" "$BACKUP_DIR/dashboard-top.php"
+    if ! grep -q 'MKAUTH map and traffic shortcuts' "$DASH_TOP"; then
+        cat >> "$DASH_TOP" <<'HTML'
+<!-- MKAUTH map and traffic shortcuts -->
+<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.26"></script>
+HTML
+    fi
+fi
 for file in MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
     install -m 0644 "$SOURCE_DIR/assets/$file" "$ADDON_DIR/assets/$file"
 done
@@ -50,11 +62,11 @@ for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
     install -m 0644 "$SOURCE_DIR/central-compat/$name" "$CENTRAL_DIR/$name"
 done
 
-for file in auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm lib/routeros_api.class.php; do php -l "$ADDON_DIR/$file" >/dev/null; done
+for file in index.hhvm auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm lib/routeros_api.class.php; do php -l "$ADDON_DIR/$file" >/dev/null; done
 for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do php -l "$CENTRAL_DIR/$name" >/dev/null; done
 grep -q 'require_map_access' "$ADDON_DIR/maps.hhvm"
 grep -q '/admin/addons/mapa-clientes/maps.hhvm' "$CENTRAL_DIR/maps.hhvm"
-grep -q 'add_menu.clientes.*mapa-clientes/maps.hhvm' "$ADDON_JS"
-grep -q 'Tr?fego de cliente' "$ADDON_JS"
+grep -q 'mka-map-shortcut-loader' "$ADDON_JS"
+grep -q 'mka-trafego-cliente-menu' "$ADDON_DIR/menu.js"
 
 printf 'Mapa protegido instalado.\nVersao: %s\nPagina: /admin/addons/mapa-clientes/maps.hhvm\nBackup: %s\n' "$VERSION" "$BACKUP_DIR"
