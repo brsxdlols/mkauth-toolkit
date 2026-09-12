@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.26"
+VERSION="1.3.27"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -43,7 +43,7 @@ install -m 0644 "$SOURCE_DIR/lib/routeros_api.class.php" "$ADDON_DIR/lib/routero
 # Integra atalhos apos o carregamento dos menus nativos e do dashboard.
 sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d;/mka-map-shortcut-loader/d' "$ADDON_JS"
 cat >> "$ADDON_JS" <<'JS'
-(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.26';(document.head||document.documentElement).appendChild(s);})();
+(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.27';(document.head||document.documentElement).appendChild(s);})();
 JS
 DASH_TOP="$ADMIN_DIR/addons/dashboard/mkauth_dashboard_top.php"
 if [ -f "$DASH_TOP" ]; then
@@ -51,7 +51,7 @@ if [ -f "$DASH_TOP" ]; then
     if ! grep -q 'MKAUTH map and traffic shortcuts' "$DASH_TOP"; then
         cat >> "$DASH_TOP" <<'HTML'
 <!-- MKAUTH map and traffic shortcuts -->
-<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.26"></script>
+<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.27"></script>
 HTML
     fi
 fi
