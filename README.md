@@ -130,3 +130,31 @@ manualmente:
 ```bash
 php /opt/mk-auth/scripts/mkauth_radius_ppp_reconcile.php --apply
 ```
+
+## Bloqueio dos logins adicionais
+
+Patch para fazer os logins de `sis_adicional` acompanharem automaticamente o
+bloqueio e o desbloqueio do login principal. Ele respeita os modos Radius Pool
+e Address-List configurados no MK-AUTH, restaura plano/IP no desbloqueio e
+forca o disconnect no MikroTik.
+
+Instalacao direta, como `root`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brsxdlols/mkauth-toolkit/main/installers/install-additional-block.sh | bash
+```
+
+Alternativa com `wget`:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/brsxdlols/mkauth-toolkit/main/installers/install-additional-block.sh | bash
+```
+
+Desinstalacao:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/brsxdlols/mkauth-toolkit/main/installers/uninstall-additional-block.sh | bash
+```
+
+Diagnostico, objetos instalados, validacao e rollback estao em
+[`patches/additional-block/README.md`](patches/additional-block/README.md).
