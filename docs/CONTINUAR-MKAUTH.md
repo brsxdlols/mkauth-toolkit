@@ -1,6 +1,6 @@
 # Continuidade MK-Auth no Codex
 
-Contexto reunido em 2026-10-01. As observacoes de servidores abaixo sao historicas e precisam de nova verificacao antes de editar producao.
+Contexto atualizado em 2026-10-08. As observacoes de servidores abaixo sao historicas e precisam de nova verificacao antes de editar producao.
 
 ## Repositorio
 
@@ -8,7 +8,7 @@ https://github.com/brsxdlols/mkauth-toolkit
 
 Instalador: installers/install-radius-reconcile.sh
 
-O instalador publicado foi comparado com a copia local nesta conversa: conteudo igual, blob GitHub e868071da5bf46ce2df971ad5b9865e95d64f40a.
+Instalador com tratamento de sessoes antigas publicado no commit ea2339275732d416d4ce7be320fef60f7ec414ab.
 
 ## Instalacao
 
@@ -25,7 +25,9 @@ wget -O /root/install-radius-reconcile.sh https://raw.githubusercontent.com/brsx
 ## Comportamento atual
 
 - Consulta RouterOS API dos ramais cadastrados em nas, usuario mkauth, senha do ramal e fallback configuravel; porta padrao 8728.
-- Filtra PPPoE autenticado por RADIUS e reconcilia sessoes em radacct. Nao pressupor que fecha todas as sessoes antigas: revisar o codigo para qualquer mudanca nesse comportamento.
+- Filtra PPPoE autenticado por RADIUS e recupera sessoes em radacct. O helper mkauth_radius_offline_guard.php encerra registros PPP/Ethernet ou sintetizados com nasportid Clientes somente apos duas observacoes de ausencia no mesmo NAS, separadas por pelo menos 120 segundos, e sem atualizacao ha pelo menos 600 segundos. Preserva qualquer login presente no snapshot PPP do NAS.
+- Lista vazia, resposta incompleta, trap/fatal, campos ausentes e ausencia em massa bloqueiam o fechamento. Falha da API limpa as confirmacoes pendentes. A ausencia em massa e definida como mais que max(20, 10% dos logins abertos elegiveis).
+- Fechamento altera acctstoptime para a ultima atualizacao conhecida e acctterminatecause para Lost-Service; nao desconecta o MikroTik e nao apaga historico. Cada linha e salva em offline-rollback-AAAAMMDD.jsonl antes de uma atualizacao condicionada a nao ter mudado desde a leitura. Lock impede sobreposicao de execucoes.
 - Instala cron a cada dois minutos e executa --apply ao final.
 - Instala status e alerta de falha de API nas dashboards reconhecidas em /admin e /admin/addons/dashboard.
 - Nao altera as queries de contagem online/offline da dashboard.
@@ -41,6 +43,12 @@ Log: /var/log/mkauth_radius_ppp_reconcile.log
 
 Estado: /var/lib/mkauth_radius_ppp_reconcile/status.json
 
+Helper: /opt/mk-auth/scripts/mkauth_radius_offline_guard.php
+
+Confirmacoes: /var/lib/mkauth_radius_ppp_reconcile/offline-*.json
+
+Backup por linha: /var/lib/mkauth_radius_ppp_reconcile/offline-rollback-AAAAMMDD.jsonl
+
 Backups do instalador: /root/mkauth_radius_reconcile_backup_*
 
 ```sh
@@ -50,6 +58,8 @@ grep ROUTER_FAIL /var/log/mkauth_radius_ppp_reconcile.log | tail -n 20
 ```
 
 ## Historico relevante
+
+Em 2026-10-08 foi corrigido o uplinknetwork, 45.172.144.97 SSH 6954, NAS 172.16.12.45. Havia 14 clientes cadastrados contados online apesar de ausentes no MikroTik; o reconciliador antigo so recuperava online. A rotina nova encerrou 59 linhas antigas apos confirmacao pelo cron. Validacao final: 995 PPPoE ativos, 995 logins abertos e 995 logins mapeados na dashboard, zero excedentes e zero ausencias no banco. Backup do servidor: /root/mkauth_offline_guard_backup_20261008_091739. Testes passaram para resposta completa, trap, resposta parcial/truncada, dry-run, duas confirmacoes, lista vazia/malformada, cliente presente e ausencia em massa. PHP 8.0 validado; PHP 7 nao foi executado neste teste.
 
 Um patch antigo contou logins brutos de radacct, incluindo sessoes sem cadastro correspondente. Produziu online maior que total e offline negativo. O bloco foi removido do instalador. A contagem de principais e adicionais deve ser corrigida separadamente, com consultas vinculadas a sis_cliente e sis_adicional e validacao de logins distintos.
 
