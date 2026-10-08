@@ -25,6 +25,7 @@ CRON_INTERVAL="${CRON_INTERVAL:-*/2 * * * *}"
 
 mkdir -p "$SCRIPT_DIR" "$BACKUP_DIR" "$STATE_DIR" "$DASHBOARD_DIR"
 chmod 755 "$STATE_DIR"
+chmod 700 "$BACKUP_DIR"
 
 if [ -f "$SCRIPT_FILE" ]; then
   cp -a "$SCRIPT_FILE" "$BACKUP_DIR/$(basename "$SCRIPT_FILE").bak"
@@ -39,9 +40,106 @@ if [ -f "$DASHBOARD_STATUS" ]; then
   cp -a "$DASHBOARD_STATUS" "$BACKUP_DIR/radius_status.php.bak"
 fi
 
-mysqldump -h"$MYSQL_HOST" -u"$MYSQL_USER" -p"$MYSQL_PASS" "$MYSQL_DB" radacct nas 2>/dev/null | gzip > "$BACKUP_DIR/radacct_nas.sql.gz" || true
+mysqldump -h"$MYSQL_HOST" -u"$MYSQL_USER" -p"$MYSQL_PASS" --single-transaction --skip-lock-tables "$MYSQL_DB" radacct nas > "$BACKUP_DIR/radacct_nas.sql"
+gzip "$BACKUP_DIR/radacct_nas.sql"
 
-cat > "$SCRIPT_FILE" <<'PHP'
+if [ -f "$SCRIPT_DIR/mkauth_radius_offline_guard.php" ]; then
+  cp -a "$SCRIPT_DIR/mkauth_radius_offline_guard.php" "$BACKUP_DIR/"
+fi
+cat > "$SCRIPT_DIR/mkauth_radius_offline_guard.php.next" <<'GUARD_PHP'
+<?php
+function offline_guard_path($router) {
+    global $cfg;
+    return dirname($cfg['state_file']) . '/offline-' . md5($router) . '.json';
+}
+function offline_guard_reset($router, $apply) {
+    if ($apply) file_put_contents(offline_guard_path($router), '{}', LOCK_EX);
+}
+function offline_guard($db, $router, $active, $apply, $onlyLogin, &$stats) {
+    $present = array();
+    foreach ($active as $ppp) {
+        if (!isset($ppp['name'], $ppp['service']) || trim($ppp['name']) === '') {
+            offline_guard_reset($router, $apply);
+            log_line("OFFLINE_SKIP router=$router reason=malformed_snapshot");
+            return;
+        }
+        // Preserve any login present on the NAS, including other PPP services.
+        $present[strtolower(trim($ppp['name']))] = true;
+    }
+    if (!$present) {
+        offline_guard_reset($router, $apply);
+        log_line("OFFLINE_SKIP router=$router reason=empty_snapshot");
+        return;
+    }
+    $stmt = $db->prepare("SELECT * FROM radacct WHERE nasipaddress=? AND acctstoptime IS NULL AND framedprotocol='PPP' AND (nasporttype='Ethernet' OR nasportid='Clientes')");
+    $stmt->bind_param('s', $router);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $rows = array(); $logins = array(); $absent = array();
+    while ($row = $result->fetch_assoc()) {
+        $login = strtolower(trim($row['username']));
+        $logins[$login] = true;
+        if (!isset($present[$login])) { $rows[] = $row; $absent[$login] = true; }
+    }
+    $stmt->close();
+    if (count($absent) > max(20, (int)ceil(count($logins) * 0.10))) {
+        offline_guard_reset($router, $apply);
+        log_line("OFFLINE_SKIP router=$router reason=mass_absence absent=" . count($absent));
+        return;
+    }
+    $path = offline_guard_path($router);
+    $previous = is_file($path) ? json_decode(file_get_contents($path), true) : array();
+    if (!is_array($previous)) $previous = array();
+    $next = array(); $now = time();
+    foreach ($rows as $row) {
+        $login = strtolower(trim($row['username']));
+        if ($onlyLogin !== null && $login !== $onlyLogin) continue;
+        $last = $row['acctupdatetime'] ?: $row['acctstarttime'];
+        $lastTime = strtotime($last);
+        if (!$lastTime || $lastTime > $now - 600) continue;
+        $key = (string)$row['radacctid'];
+        $signature = hash('sha256', json_encode(array($row['acctsessionid'], $row['acctstarttime'], $row['acctupdatetime'], $row['username'])));
+        $prior = isset($previous[$key]) ? $previous[$key] : null;
+        $validPrior = $prior && $prior['signature'] === $signature && $prior['seen'] >= $now - 600;
+        $first = $validPrior ? $prior['first'] : $now;
+        $next[$key] = array('signature' => $signature, 'first' => $first, 'seen' => $now);
+        if (!$validPrior || $now - $first < 120) {
+            log_line("OFFLINE_PENDING login=$login router=$router radacctid=$key");
+            continue;
+        }
+        if (!$apply) { log_line("DRY_CLOSE login=$login router=$router radacctid=$key"); continue; }
+        // Back up the exact row before its conditional update; never delete history.
+        $backup = dirname($path) . '/offline-rollback-' . date('Ymd') . '.jsonl';
+        $record = array('captured_at' => date('c'), 'row' => $row);
+        $encoded = json_encode($record);
+        if ($encoded === false || file_put_contents($backup, $encoded . "\n", FILE_APPEND | LOCK_EX) === false) {
+            throw new RuntimeException('Offline rollback backup failed');
+        }
+        chmod($backup, 0600);
+        $update = $db->prepare("UPDATE radacct SET acctstoptime=COALESCE(acctupdatetime,acctstarttime), acctterminatecause='Lost-Service' WHERE radacctid=? AND nasipaddress=? AND acctstoptime IS NULL AND acctsessionid=? AND acctupdatetime <=> ? AND acctstarttime <=> ?");
+        $update->bind_param('issss', $row['radacctid'], $router, $row['acctsessionid'], $row['acctupdatetime'], $row['acctstarttime']);
+        $update->execute();
+        if ($update->affected_rows === 1) {
+            if (!isset($stats['closed'])) $stats['closed'] = 0;
+            $stats['closed']++;
+            unset($next[$key]);
+            log_line("CLOSE_ABSENT login=$login router=$router radacctid=$key last_update=$last");
+        }
+        $update->close();
+    }
+    if ($apply) {
+        $temp = $path . '.tmp';
+        if (file_put_contents($temp, json_encode($next), LOCK_EX) === false || !rename($temp, $path)) {
+            throw new RuntimeException('Offline state save failed');
+        }
+        chmod($path, 0600);
+    }
+}
+GUARD_PHP
+php -l "$SCRIPT_DIR/mkauth_radius_offline_guard.php.next"
+chmod 600 "$SCRIPT_DIR/mkauth_radius_offline_guard.php.next"
+mv "$SCRIPT_DIR/mkauth_radius_offline_guard.php.next" "$SCRIPT_DIR/mkauth_radius_offline_guard.php"
+cat > "$SCRIPT_FILE.next" <<'PHP'
 #!/usr/bin/env php
 <?php
 error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE);
@@ -62,6 +160,9 @@ $cfg = array(
 );
 
 $apply = in_array('--apply', $argv, true);
+$runLock = fopen('/var/lib/mkauth_radius_ppp_reconcile/run.lock', 'c');
+if (!$runLock || !flock($runLock, LOCK_EX | LOCK_NB)) exit(0);
+require_once __DIR__ . '/mkauth_radius_offline_guard.php';
 $onlyLogin = null;
 $onlyRouter = null;
 foreach ($argv as $arg) {
@@ -140,6 +241,10 @@ class RouterosMiniApi {
     public function comm($command) {
         $this->writeSentence(array($command));
         $reply = $this->readReply();
+        if (!$this->hasDone($reply)) return false;
+        foreach ($reply as $sentence) {
+            if (isset($sentence[0]) && ($sentence[0] === '!trap' || $sentence[0] === '!fatal')) return false;
+        }
         $rows = array();
         foreach ($reply as $sentence) {
             if (!isset($sentence[0]) || $sentence[0] !== '!re') continue;
@@ -231,10 +336,16 @@ class RouterosMiniApi {
         if ($c === false || $c === '') return false;
         $c = ord($c);
         if (($c & 0x80) === 0x00) return $c;
-        if (($c & 0xC0) === 0x80) return (($c & ~0xC0) << 8) + ord(fread($this->socket, 1));
-        if (($c & 0xE0) === 0xC0) return (($c & ~0xE0) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
-        if (($c & 0xF0) === 0xE0) return (($c & ~0xF0) << 24) + (ord(fread($this->socket, 1)) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
-        return false;
+        if (($c & 0xC0) === 0x80) { $extra = 1; $value = $c & 0x3F; }
+        elseif (($c & 0xE0) === 0xC0) { $extra = 2; $value = $c & 0x1F; }
+        elseif (($c & 0xF0) === 0xE0) { $extra = 3; $value = $c & 0x0F; }
+        else return false;
+        for ($i = 0; $i < $extra; $i++) {
+            $byte = fread($this->socket, 1);
+            if ($byte === false || $byte === '') return false;
+            $value = ($value << 8) | ord($byte);
+        }
+        return $value;
     }
 }
 
@@ -268,19 +379,40 @@ foreach ($nasRows as $nas) {
     $api = new RouterosMiniApi($cfg['timeout']);
 
     if (!$api->connect($router, $cfg['api_user'], $password, $cfg['api_port'])) {
+        $pingOutput = array();
+        $pingCode = 1;
+        @exec('ping -c 1 -W 1 ' . escapeshellarg($router) . ' 2>&1', $pingOutput, $pingCode);
+        if ($pingCode !== 0) {
+            $reason = 'Sem ping até o IP';
+        } else {
+            $socketError = 0;
+            $socketMessage = '';
+            $socket = @fsockopen($router, (int)$cfg['api_port'], $socketError, $socketMessage, 2);
+            if (!is_resource($socket)) {
+                $reason = 'Porta ' . (int)$cfg['api_port'] . ' fechada ou indisponível';
+            } else {
+                fclose($socket);
+                $reason = 'Usuário ou senha da API inválidos';
+            }
+        }
         $stats['routers_fail']++;
-        $failedRouters[] = array('router' => $router, 'name' => $routerName);
-        log_line("ROUTER_FAIL router=$router name=\"$routerName\"");
+        $failedRouters[] = array('router' => $router, 'name' => $routerName, 'reason' => $reason);
+        log_line("ROUTER_FAIL router=$router name=\"$routerName\" reason=\"$reason\"");
+        offline_guard_reset($router, $apply);
         continue;
     }
 
-    $stats['routers_ok']++;
     $active = $api->comm('/ppp/active/print');
     $api->disconnect();
     if (!is_array($active)) {
-        log_line("ROUTER_EMPTY router=$router name=\"$routerName\"");
+        $stats['routers_fail']++;
+        $failedRouters[] = array('router' => $router, 'name' => $routerName, 'reason' => 'Consulta PPP incompleta ou recusada');
+        offline_guard_reset($router, $apply);
+        log_line("ROUTER_FAIL router=$router reason=invalid_ppp_reply");
         continue;
     }
+    $stats['routers_ok']++;
+    offline_guard($db, $router, $active, $apply, $onlyLogin, $stats);
 
     foreach ($active as $ppp) {
         if (!isset($ppp['name'])) continue;
@@ -374,8 +506,9 @@ log_line("SUMMARY apply=" . ($apply ? 'yes' : 'no') . " only_login=" . ($onlyLog
 $db->close();
 PHP
 
-chmod 755 "$SCRIPT_FILE"
-php -l "$SCRIPT_FILE"
+php -l "$SCRIPT_FILE.next"
+chmod 700 "$SCRIPT_FILE.next"
+mv "$SCRIPT_FILE.next" "$SCRIPT_FILE"
 
 cat > "$DASHBOARD_STATUS" <<'PHP'
 <?php
