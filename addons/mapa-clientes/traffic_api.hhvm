@@ -3,6 +3,8 @@ require __DIR__ . '/auth.php';
 require_map_access(true);
 $authenticatedSession = true;
 require __DIR__ . '/config.hhvm';
+require_once __DIR__ . '/access_policy.php';
+$trafficClientScope = map_client_scope_sql('c');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -16,7 +18,7 @@ function traffic_response($status, $payload) {
 $login = isset($_GET['login']) ? trim((string)$_GET['login']) : '';
 if ($login === '' || strlen($login) > 128) traffic_response(400, array('ok' => false, 'error' => 'Login inv?lido.'));
 
-$stmt = $link->prepare("SELECT r.nasipaddress, r.framedipaddress, n.senha FROM sis_cliente c INNER JOIN radacct r ON TRIM(r.username)=TRIM(c.login) LEFT JOIN nas n ON TRIM(n.nasname)=TRIM(r.nasipaddress) WHERE c.login=? AND c.cli_ativado='s' AND r.acctstoptime IS NULL ORDER BY r.radacctid DESC LIMIT 1");
+$stmt = $link->prepare("SELECT r.nasipaddress, r.framedipaddress, n.senha FROM sis_cliente c INNER JOIN radacct r ON TRIM(r.username)=TRIM(c.login) LEFT JOIN nas n ON TRIM(n.nasname)=TRIM(r.nasipaddress) WHERE c.login=? AND ($trafficClientScope) AND c.cli_ativado='s' AND r.acctstoptime IS NULL ORDER BY r.radacctid DESC LIMIT 1");
 if (!$stmt) traffic_response(500, array('ok' => false, 'error' => 'Consulta indispon?vel.'));
 $stmt->bind_param('s', $login);
 $stmt->execute();

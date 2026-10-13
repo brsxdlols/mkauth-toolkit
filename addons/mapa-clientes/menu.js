@@ -11,7 +11,7 @@
     if (!parent) return;
     var entries = [
       ['mka-mapa-clientes-menu', '/admin/addons/mapa-clientes/', 'Mapa de clientes', 'bi bi-map'],
-      ['mka-trafego-cliente-menu', '/admin/addons/mapa-clientes/?monitor=1', 'Tr\u00e1fego de clientes', 'bi bi-graph-up']
+      ['mka-trafego-cliente-menu', '/admin/addons/mapa-clientes/monitor/', 'Tr\u00e1fego de clientes', 'bi bi-graph-up']
     ];
     entries.forEach(function (entry) {
       var item = document.getElementById(entry[0]);

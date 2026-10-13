@@ -13,7 +13,7 @@ function map_access_start_session() {
 
 function map_access_via_admin() {
     if (session_status() === PHP_SESSION_ACTIVE) {
-        if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado'])) return true;
+        if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado']) || !empty($_SESSION['MM_Usuario'])) return true;
         session_write_close();
         $_SESSION = array();
     }
@@ -24,11 +24,11 @@ function map_access_via_admin() {
         if (preg_match('/^[A-Za-z0-9,-]{16,128}$/', $value)) $sessionIds[] = $value;
     }
     foreach (array_unique($sessionIds) as $sessionId) {
-        foreach (array('MKASESSID', 'mka') as $sessionName) {
+        foreach (array_unique(array_merge(array_filter(array_keys($_COOKIE), function($name){ return preg_match('/^_admin-[a-f0-9]{40}-MKA$/D', $name); }), array('MKASESSID', 'mka'))) as $sessionName) {
             session_name($sessionName);
             session_id($sessionId);
             session_start();
-            if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado'])) return true;
+            if (!empty($_SESSION['MKA_Logado']) || !empty($_SESSION['mka_logado']) || !empty($_SESSION['MM_Usuario'])) return true;
             session_write_close();
             $_SESSION = array();
         }
@@ -85,7 +85,9 @@ function map_access_enable_trusted_device() {
     foreach ($store as $key => $entry) {
         if (!is_array($entry) || (int)$entry['created'] + MAP_ACCESS_TTL < $now) unset($store[$key]);
     }
-    $store[$hash] = array('created' => $now);
+    $operator = !empty($_SESSION['MKA_Usuario']) ? (string)$_SESSION['MKA_Usuario'] : (!empty($_SESSION['MM_Usuario']) ? (string)$_SESSION['MM_Usuario'] : '');
+    if ($operator === '') return false;
+    $store[$hash] = array('created' => $now, 'operator' => $operator);
     if (!map_access_write_store($store)) return false;
     map_access_set_cookie($token, $now + MAP_ACCESS_TTL);
     $_COOKIE[MAP_ACCESS_COOKIE] = $token;

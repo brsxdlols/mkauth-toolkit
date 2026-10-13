@@ -25,9 +25,12 @@ if ($id === false || $id < 1 || $lat === false || $lon === false || $lat < -90 |
 $link = mysqli_connect('127.0.0.1', 'root', 'vertrigo', 'mkradius');
 if (!$link) respond(500, array('ok' => false, 'error' => 'Falha ao conectar ao banco.'));
 
+require_once __DIR__ . '/access_policy.php';
+$primaryScope = map_client_scope_sql('sis_cliente');
+$additionalScope = map_client_scope_sql('owner');
 $checkSql = $clientKind === 'additional'
-    ? "SELECT coordenadas,end_cep,end_endereco,end_numero,end_bairro,end_cidade,end_estado,'' FROM sis_adicional WHERE id=? LIMIT 1"
-    : "SELECT coordenadas,cep,endereco,numero,bairro,cidade,estado,cidade_ibge FROM sis_cliente WHERE id=? AND cli_ativado='s' LIMIT 1";
+    ? "SELECT a.coordenadas,a.end_cep,a.end_endereco,a.end_numero,a.end_bairro,a.end_cidade,a.end_estado,'' FROM sis_adicional a LEFT JOIN sis_cliente owner ON owner.login=a.login WHERE a.id=? AND ($additionalScope) LIMIT 1"
+    : "SELECT coordenadas,cep,endereco,numero,bairro,cidade,estado,cidade_ibge FROM sis_cliente WHERE id=? AND ($primaryScope) AND cli_ativado='s' LIMIT 1";
 $check = mysqli_prepare($link, $checkSql);
 mysqli_stmt_bind_param($check, 'i', $id);
 mysqli_stmt_execute($check);

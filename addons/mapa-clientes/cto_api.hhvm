@@ -2,6 +2,9 @@
 require __DIR__ . '/auth.php';
 require_map_access(true);
 require __DIR__ . '/config.hhvm';
+require_once __DIR__ . '/access_policy.php';
+$ctoPrimaryScope = map_client_scope_sql('sc');
+$ctoAdditionalScope = map_client_scope_sql('owner');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
@@ -32,7 +35,7 @@ if ($result) while ($row = mysqli_fetch_assoc($result)) {
     $clients = array();
     $clientSql = "SELECT sc.login, sc.nome, sc.porta_splitter, sc.coordenadas
                     FROM sis_cliente sc
-                   WHERE $where
+                   WHERE ($where) AND ($ctoPrimaryScope)
                    ORDER BY CAST(sc.porta_splitter AS UNSIGNED), sc.porta_splitter, sc.nome";
     $clientResult = mysqli_query($link, $clientSql);
     if ($clientResult) while ($client = mysqli_fetch_assoc($clientResult)) {
@@ -56,8 +59,8 @@ if ($result) while ($row = mysqli_fetch_assoc($result)) {
         );
     }
     $additionalSql = "SELECT sa.username AS login, sa.nome, sa.porta_splitter, sa.coordenadas
-                        FROM sis_adicional sa
-                       WHERE TRIM(sa.caixa_herm) = TRIM('$ctoName')
+                        FROM sis_adicional sa LEFT JOIN sis_cliente owner ON owner.login=sa.login
+                       WHERE TRIM(sa.caixa_herm) = TRIM('$ctoName') AND ($ctoAdditionalScope)
                        ORDER BY CAST(sa.porta_splitter AS UNSIGNED), sa.porta_splitter, sa.nome";
     $additionalResult = mysqli_query($link, $additionalSql);
     if ($additionalResult) while ($client = mysqli_fetch_assoc($additionalResult)) {
