@@ -42,3 +42,9 @@ sh installers/rollback-mapa.sh /root/backups/mk-auth-mapa-clientes-AAAAmmdd-HHMM
 ```
 
 Nenhuma credencial, senha ou chave de mapas é incluída no repositório. A chave configurada no MK-AUTH é lida apenas no servidor e entregue à biblioteca oficial do Google quando esse provedor estiver selecionado. Recomenda-se restringi-la ao domínio do provedor no Google Cloud.
+
+## Monitoramento dedicado
+
+Abra `/admin/addons/mapa-clientes/monitor/` ou `/admin/addons/mapa-clientes/monitor/?login=LOGIN`. O endereço antigo `?monitor=1` continua funcionando. O pacote instala a entrada e migra links configurados no dashboard com backup. AMPLIAR e o menu usam a entrada nova.
+
+Contagens e percentuais dependem da permissão nativa `perm_totais`. Os filtros continuam disponíveis sem valores agregados; as APIs respeitam os grupos do operador nos clientes principais e adicionais. Autorizações antigas de dispositivo sem identidade precisam ser renovadas por uma sessão administrativa para consultar grupos.

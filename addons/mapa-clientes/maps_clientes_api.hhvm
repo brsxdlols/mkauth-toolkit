@@ -3,6 +3,11 @@ require __DIR__ . '/auth.php';
 require_map_access(true);
 $authenticatedSession = true;
 require __DIR__ . '/config.hhvm';
+require_once __DIR__ . '/access_policy.php';
+$canViewTotals = map_can_view_totals();
+$primaryScope = map_client_scope_sql('c');
+$additionalScope = map_client_scope_sql('owner');
+if (!map_client_records_available()) { http_response_code(403); echo json_encode(array('ok'=>false,'error'=>'Entre novamente no MK-AUTH para verificar os grupos permitidos.')); exit; }
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -56,7 +61,7 @@ LEFT JOIN radacct last_r ON last_r.radacctid = (
     ORDER BY rr.radacctid DESC
     LIMIT 1
 )
-
+WHERE $primaryScope
 ORDER BY c.nome, c.login
 ";
 
@@ -101,7 +106,7 @@ LEFT JOIN radacct last_r ON last_r.radacctid = (
     ORDER BY rr.radacctid DESC
     LIMIT 1
 )
-WHERE COALESCE(TRIM(a.username), '') <> ''
+WHERE COALESCE(TRIM(a.username), '') <> '' AND ($additionalScope)
 ORDER BY a.nome, a.username
 ";
 $additionalResult = $link->query($additionalSql);
@@ -141,7 +146,7 @@ foreach ($results as $clientResult) while ($row = $clientResult->fetch_assoc()) 
         'status' => $row['status'],
         'disabled' => ($row['cli_ativado'] === 'n'),
         'blocked' => ($row['bloqueado'] === 'sim'),
-        'session_count' => (int)$row['session_count'],
+        'session_count' => $canViewTotals ? (int)$row['session_count'] : null,
         'online_seconds' => $onlineSeconds,
         'connected_at' => clean_value($row['acctstarttime']),
         'last_update' => clean_value($row['acctupdatetime']),
@@ -221,7 +226,8 @@ echo json_encode(array(
     'ok' => true,
     'authenticated' => $authenticatedSession,
     'generated_at' => date('c'),
-    'summary' => array('total' => count($clients), 'online' => $online, 'offline' => $offline, 'mapped' => $mapped, 'unmapped' => $unmapped),
+    'can_view_totals' => $canViewTotals,
+    'summary' => map_api_summary($clients, $canViewTotals),
     'options' => $options,
     'providers' => $providers,
     'branches' => $branches,
