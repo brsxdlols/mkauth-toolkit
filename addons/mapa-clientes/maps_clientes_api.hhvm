@@ -29,7 +29,7 @@ $sql = "
 SELECT
     'primary' AS client_kind,
     c.id, c.uuid_cliente, c.nome, c.login, c.coordenadas, c.plano, c.ssid, c.tipo,
-    c.bloqueado,
+    c.bloqueado, c.cli_ativado,
     c.cep, c.endereco, c.numero, c.bairro, c.cidade, c.estado, c.complemento,
     c.ramal, c.mac AS cadastro_mac, c.ip AS cadastro_ip, c.interface,
     c.porta_olt, c.caixa_herm, c.porta_splitter, c.onu_ont,
@@ -56,7 +56,7 @@ LEFT JOIN radacct last_r ON last_r.radacctid = (
     ORDER BY rr.radacctid DESC
     LIMIT 1
 )
-WHERE c.cli_ativado = 's'
+
 ORDER BY c.nome, c.login
 ";
 
@@ -71,7 +71,7 @@ $additionalSql = "
 SELECT
     'additional' AS client_kind,
     a.id, a.uuid_adicional AS uuid_cliente, a.nome, a.username AS login,
-    a.coordenadas, a.plano, NULL AS ssid, 'adicional' AS tipo, a.bloqueado,
+    a.coordenadas, a.plano, NULL AS ssid, 'adicional' AS tipo, a.bloqueado, COALESCE(owner.cli_ativado, 's') AS cli_ativado,
     a.end_cep AS cep, a.end_endereco AS endereco, a.end_numero AS numero,
     a.end_bairro AS bairro, a.end_cidade AS cidade, a.end_estado AS estado,
     a.end_complemento AS complemento,
@@ -86,6 +86,7 @@ SELECT
     last_r.acctstoptime AS last_stoptime,
     last_r.acctterminatecause AS last_terminatecause
 FROM sis_adicional a
+LEFT JOIN sis_cliente owner ON owner.login = a.login
 LEFT JOIN (
     SELECT username, MAX(radacctid) AS radacctid, COUNT(*) AS session_count
     FROM radacct
@@ -138,12 +139,14 @@ foreach ($results as $clientResult) while ($row = $clientResult->fetch_assoc()) 
         'lon' => $lon,
         'has_coordinates' => $hasCoordinates,
         'status' => $row['status'],
+        'disabled' => ($row['cli_ativado'] === 'n'),
         'blocked' => ($row['bloqueado'] === 'sim'),
         'session_count' => (int)$row['session_count'],
         'online_seconds' => $onlineSeconds,
         'connected_at' => clean_value($row['acctstarttime']),
         'last_update' => clean_value($row['acctupdatetime']),
         'last_connected_at' => clean_value($row['last_starttime']),
+        'offline_seconds' => ($row['status'] === 'offline' && !empty($row['last_stoptime']) && strtotime($row['last_stoptime']) !== false && strtotime($row['last_stoptime']) > 0 && strtotime($row['last_stoptime']) <= time()) ? time() - strtotime($row['last_stoptime']) : null,
         'last_disconnected_at' => clean_value($row['last_stoptime']),
         'last_disconnect_cause' => clean_value($row['last_terminatecause']),
         'framed_ip' => clean_value($row['framedipaddress']),
