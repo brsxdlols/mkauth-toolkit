@@ -57,17 +57,15 @@ function mt_groups($token,$transport='mt_api') {
     return array_values($groups);
 }
 function mt_settings_message($c) {
-    $types=array();if($c['connect'])$types[]='CLIENTE CONECTADO';if($c['disconnect'])$types[]='CLIENTE DESCONECTADO';if($c['mass'])$types[]='QUEDA MASSIVA';
-    $filters=array('all'=>'Todos os contratos ativos','unblocked'=>'Somente não bloqueados','blocked'=>'Somente bloqueados');
+    $types=array();if($c['connect'])$types[]='Cliente conectado';if($c['disconnect'])$types[]='Cliente desconectado';if($c['mass'])$types[]='Queda massiva';
+    $filters=array('all'=>'Ativos e bloqueados','unblocked'=>'Ativos','blocked'=>'Bloqueados');
     $zone=mt_timezone(isset($c['timezone'])?$c['timezone']:'America/Sao_Paulo');
-    $clock=(new DateTimeImmutable('now',new DateTimeZone($zone)))->format('d/m/Y H:i:s P');
-    return '✅ MK-AUTH — CONFIGURAÇÃO SALVA'
-        ."\nEnvio automático: ".($c['enabled']?'ATIVADO':'DESATIVADO')
-        ."\nGrupo: ".($c['chat_title']?:$c['chat_id'])."\nChat ID: ".$c['chat_id']
-        ."\nAlertas selecionados: ".($types?implode(', ',$types):'Nenhum')
-        ."\nContratos (avisos individuais): ".$filters[mt_customer_filter(isset($c['customer_filter'])?$c['customer_filter']:'all')]
-        ."\nQueda massiva: ".$c['threshold'].' clientes em até '.$c['window_minutes'].' min (ativos e bloqueados)'
-        ."\nFuso horário: ".$zone."\nToken configurado: ".($c['token']!==''?'Sim':'Não')
+    $clock=(new DateTimeImmutable('now',new DateTimeZone($zone)))->format('d/m/Y H:i:s');
+    return "✅ CONFIGURAÇÃO SALVA"
+        ."\nEnvio: ".($c['enabled']?'ATIVADO':'DESATIVADO')
+        ."\nAlertas: ".($types?implode(', ',$types):'Nenhum selecionado')
+        ."\nContratos individuais: ".$filters[mt_customer_filter(isset($c['customer_filter'])?$c['customer_filter']:'all')]
+        .($c['mass']?"\nQueda massiva: ".$c['threshold'].' clientes em '.$c['window_minutes'].' min (ativos e bloqueados)':'')
         ."\nSalvo em: ".$clock;
 }
 function mt_notify_saved($before,$after,$transport='mt_api') {
