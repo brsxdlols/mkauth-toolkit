@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.41"
+VERSION="1.3.42"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -28,7 +28,7 @@ if [ -f "$ADDON_DIR/monitor/index.php" ] && grep -q 'suite-map-monitor-entry-v2'
 fi
 if [ -f "$SUITE_MONITOR_UPDATER" ]; then command -v python3 >/dev/null 2>&1 || fail "python3 necessario para atualizar o monitor isolado da suite"; fi
 
-for file in VERSION index.hhvm monitor/index.php access_policy.php telegram_api.hhvm telegram_worker.php telegram_scheduler.php telegram_cli.php lib/telegram_engine.php lib/telegram_delivery.php lib/telegram_demo.php auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js lib/routeros_api.class.php assets/telegram.js assets/telegram.css assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
+for file in VERSION index.hhvm monitor/index.php access_policy.php telegram_api.hhvm telegram_worker.php telegram_scheduler.php telegram_cli.php lib/telegram_engine.php lib/telegram_delivery.php lib/telegram_demo.php auth.php config.hhvm persistent_access.hhvm maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm route_api.hhvm traffic_api.hhvm nas_health.hhvm cto_api.hhvm menu.js lib/routeros_api.class.php assets/telegram.js assets/telegram.css assets/connection-log.js assets/connection-log.css assets/MarkerCluster.css assets/MarkerCluster.Default.css assets/leaflet.markercluster.js central-compat/maps.hhvm central-compat/maps_clientes_api.hhvm central-compat/maps_clientes_coord_update.hhvm; do
     [ -f "$SOURCE_DIR/$file" ] || fail "arquivo do pacote ausente: $file"
 done
 
@@ -60,7 +60,7 @@ install -m 0644 "$SOURCE_DIR/lib/routeros_api.class.php" "$ADDON_DIR/lib/routero
 # Integra atalhos apos o carregamento dos menus nativos e do dashboard.
 sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d;/mka-map-shortcut-loader/d' "$ADDON_JS"
 cat >> "$ADDON_JS" <<'JS'
-(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.41';(document.head||document.documentElement).appendChild(s);})();
+(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.42';(document.head||document.documentElement).appendChild(s);})();
 JS
 DASH_TOP="$ADMIN_DIR/addons/dashboard/mkauth_dashboard_top.php"
 if [ -f "$DASH_TOP" ]; then
@@ -68,11 +68,11 @@ if [ -f "$DASH_TOP" ]; then
     if ! grep -q 'MKAUTH map and traffic shortcuts' "$DASH_TOP"; then
         cat >> "$DASH_TOP" <<'HTML'
 <!-- MKAUTH map and traffic shortcuts -->
-<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.41"></script>
+<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.42"></script>
 HTML
     fi
 fi
-for file in telegram.js telegram.css MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
+for file in telegram.js telegram.css connection-log.js connection-log.css MarkerCluster.css MarkerCluster.Default.css leaflet.markercluster.js; do
     install -m 0644 "$SOURCE_DIR/assets/$file" "$ADDON_DIR/assets/$file"
 done
 for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
