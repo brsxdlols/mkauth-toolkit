@@ -33,8 +33,9 @@ try {
             mt_token($c['token']);mt_chat_id($c['chat_id']);
             if(!$c['connect']&&!$c['disconnect']&&!$c['mass'])throw new RuntimeException('Escolha os alertas e salve antes de ativar.');
             if($c['mass']&&!map_can_view_totals())throw new RuntimeException('Queda massiva exige a permissão Totais.');
-            $verified=mt_read('verified');
-            if(!isset($verified['fingerprint'])||!hash_equals($verified['fingerprint'],mt_fingerprint($c))||time()-(int)$verified['at']>86400)throw new RuntimeException('Envie uma mensagem de teste para o bot/grupo salvo antes de ativar.');
+            $group=mt_activation_check($c);
+            $c['chat_id']=$group['id'];$c['chat_title']=$group['title'];
+            mt_write('verified',array('fingerprint'=>mt_fingerprint($c),'at'=>time(),'chat_title'=>$group['title'],'bot'=>$group['bot']));
             $c['operator']=$operator;
         }
         $c['revision']=bin2hex(random_bytes(12));mt_write('config',$c);flock($lock,LOCK_UN);fclose($lock);
