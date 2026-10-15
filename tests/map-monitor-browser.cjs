@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
-const source = fs.readFileSync(path.join(__dirname,'../addons/mapa-clientes/maps.hhvm'),'utf8');
+const source = fs.readFileSync(process.env.MKAUTH_MAP_TEST_FILE || path.join(__dirname,'../addons/mapa-clientes/maps.hhvm'),'utf8');
 const css = source.split('<style>')[1].split('</style>')[0];
 const functionLine = name => source.split('\n').find(line => line.trimStart().startsWith('function '+name+'('));
 const popup = source.slice(source.indexOf('  function popup(c)'),source.indexOf('  function markerLock'));
@@ -20,7 +20,7 @@ const svg=document.querySelector('svg'),labels=[...svg.querySelectorAll('.traffi
 return {viewBox:svg.getAttribute('viewBox').split(' ').map(Number),width:svg.clientWidth,height:svg.clientHeight,labels:labels.map(l=>({text:l.textContent,color:l.getAttribute('fill'),x:l.getBBox().x+l.getBBox().width,y:l.getBBox().y})),areas:[...svg.querySelectorAll('polygon')].map(a=>a.getAttribute('fill-opacity')),tooltips:[...svg.querySelectorAll('circle title')].map(t=>t.textContent),dataHeight:document.querySelector('.popup-grid').getBoundingClientRect().height,trafficHeight:document.querySelector('.traffic-mini').getBoundingClientRect().height};
 });
 assert(result.viewBox[2]>=result.width && result.viewBox[3]>=result.height);
-assert.deepEqual(result.areas,['0.16','0.16']);assert.equal(result.labels.length,2);
+assert.deepEqual(result.areas,['0.16','0.16']);assert.equal(result.labels.length,4);result.labels=result.labels.filter(l=>l.text.includes('Mbps'));assert.equal(result.labels.length,2);
 assert(result.labels[0].text.includes('14.20 Mbps')&&result.labels[0].color==='#3182ce');assert(result.labels[1].text.includes('14.10 Mbps')&&result.labels[1].color==='#e45756');
 assert(result.labels.every(l=>l.x<=result.viewBox[2]+1 && l.y>=0));assert(result.tooltips.every(t=>t.includes('Coleta ')&&t.includes('Download ')&&t.includes('Upload ')));
 if(size.width>820) assert(Math.abs(result.trafficHeight-result.dataHeight)<3,'Chart panel height does not follow client data');

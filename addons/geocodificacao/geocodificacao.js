@@ -67,7 +67,7 @@
         function api(action, fields) {
             var data = new URLSearchParams();
             Object.keys(fields || {}).forEach(function(key){ data.append(key, fields[key]); });
-            return fetch('addons/geocodificacao/geocode.php?action=' + encodeURIComponent(action), {
+            return fetch('/admin/addons/geocodificacao/geocode.php?action=' + encodeURIComponent(action), {
                 method:'POST', credentials:'same-origin', cache:'no-store',
                 headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-MKAUTH-Batch':'1'}, body:data.toString()
             }).then(function(response){
@@ -266,7 +266,7 @@
         var googleAutocomplete = null, googlePlaces = null, googleGeocoder = null, googleScriptPromise = null, googlePlacesAvailable = null;
 
         function nativeMapSettings() {
-            return fetch('conf_mapas.hhvm', { credentials:'same-origin', cache:'no-store' }).then(function(r){
+            return fetch('/admin/conf_mapas.hhvm', { credentials:'same-origin', cache:'no-store' }).then(function(r){
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.text();
             }).then(function(html){
@@ -375,7 +375,7 @@
             var confirm = document.getElementById('geo_confirm');
             confirm.disabled = true;
             modalStatus.textContent = 'Conferindo CEP e logradouro no ViaCEP…';
-            var url = 'addons/geocodificacao/geocode.php?action=address&uf=' + encodeURIComponent(uf) + '&city=' + encodeURIComponent(city) + '&street=' + encodeURIComponent(street);
+            var url = '/admin/addons/geocodificacao/geocode.php?action=address&uf=' + encodeURIComponent(uf) + '&city=' + encodeURIComponent(city) + '&street=' + encodeURIComponent(street);
             return fetch(url, { credentials:'same-origin' }).then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function(data){
                 var wanted = normalizeText(street);
                 var matches = (data.results || []).filter(function(item){
@@ -425,7 +425,7 @@
             var p = feature.properties || {};
             var cep = String(p.postcode || '').replace(/\D/g, '');
             if (cep.length !== 8) return Promise.resolve(feature);
-            return fetch('addons/geocodificacao/geocode.php?action=cep&cep=' + cep, {credentials:'same-origin'}).then(function(r){ if(!r.ok) return null; return r.json(); }).then(function(data){
+            return fetch('/admin/addons/geocodificacao/geocode.php?action=cep&cep=' + cep, {credentials:'same-origin'}).then(function(r){ if(!r.ok) return null; return r.json(); }).then(function(data){
                 var via = data && data.result;
                 if (!via) return feature;
                 p.postcode = via.cep;
@@ -495,7 +495,7 @@
             if (controller) controller.abort();
             controller = new AbortController();
             suggestions.innerHTML = '<p class="p-4">Buscando…</p>';
-            var url = 'addons/geocodificacao/geocode.php?action=photon&q=' + encodeURIComponent(q);
+            var url = '/admin/addons/geocodificacao/geocode.php?action=photon&q=' + encodeURIComponent(q);
             var cepMatch = q.replace(/\D/g, '').match(/(?:^|\D)(\d{8})(?:\D|$)/) || q.match(/(\d{5})-?(\d{3})/);
             var cepDigits = cepMatch ? (cepMatch[1] + (cepMatch[2] || '')) : '';
             var queryWithoutCep = q;
@@ -506,7 +506,7 @@
             var searchNumber = numberMatches.length ? numberMatches[numberMatches.length - 1].replace(/\D/g, '') : fieldValue('numero');
             var requests = [fetch(url, { signal: controller.signal, credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })];
             if (cepDigits.length === 8) {
-                requests.push(fetch('addons/geocodificacao/geocode.php?action=cep&cep=' + cepDigits, { signal:controller.signal, credentials:'same-origin' }).then(function(r){ if(!r.ok) return null; return r.json(); }));
+                requests.push(fetch('/admin/addons/geocodificacao/geocode.php?action=cep&cep=' + cepDigits, { signal:controller.signal, credentials:'same-origin' }).then(function(r){ if(!r.ok) return null; return r.json(); }));
             }
             Promise.all(requests)
                 .then(function (responses) {
@@ -514,7 +514,7 @@
                     var via = responses[1] && responses[1].result;
                     if (!via || via.erro) return { data:data, via:null, resolved:null };
                     var resolveQuery = [via.logradouro, searchNumber, via.localidade, via.uf].filter(Boolean).join(', ');
-                    return fetch('addons/geocodificacao/geocode.php?action=photon&q=' + encodeURIComponent(resolveQuery), {signal:controller.signal,credentials:'same-origin'})
+                    return fetch('/admin/addons/geocodificacao/geocode.php?action=photon&q=' + encodeURIComponent(resolveQuery), {signal:controller.signal,credentials:'same-origin'})
                         .then(function(r){if(!r.ok)return null;return r.json();})
                         .then(function(resolved){return {data:data,via:via,resolved:resolved};});
                 })
@@ -561,7 +561,7 @@
         function openOsmModal() {
             activeProvider = 'osm';
             if (googleMap) { googleMap = null; googleMarker = null; googlePlaces = null; googleAutocomplete = null; googleGeocoder = null; document.getElementById('geo_map').innerHTML = ''; }
-            Promise.all([loadAsset('css', 'estilos/leaflet.css', 'geo-leaflet-css'), loadAsset('js', 'scripts/leaflet.js', 'geo-leaflet-js')]).then(function () {
+            Promise.all([loadAsset('css', '/admin/estilos/leaflet.css', 'geo-leaflet-css'), loadAsset('js', '/admin/scripts/leaflet.js', 'geo-leaflet-js')]).then(function () {
                 var pos = parseCoordinate();
                 if (!map) {
                     map = L.map('geo_map').setView(pos, 17);
@@ -635,7 +635,7 @@
         if (window.location.pathname.indexOf('/admin/') === -1 || document.getElementById('geo_job_notice')) return;
         function api(action, fields) {
             var data=new URLSearchParams();Object.keys(fields||{}).forEach(function(k){data.append(k,fields[k]);});
-            return fetch('addons/geocodificacao/geocode.php?action='+encodeURIComponent(action),{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-MKAUTH-Batch':'1'},body:data.toString()})
+            return fetch('/admin/addons/geocodificacao/geocode.php?action='+encodeURIComponent(action),{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8','X-MKAUTH-Batch':'1'},body:data.toString()})
                 .then(function(r){return r.json().then(function(d){if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d;});});
         }
         api('batch_jobs',{}).then(function(data){

@@ -4,7 +4,7 @@ Addons e ferramentas para MK-AUTH com instala??o automatizada.
 
 ## Geocodifica??o de clientes
 
-A vers?o `2.10.3` adiciona ao cadastro de clientes, mant?m compatibilidade com PHP legado e inclui atualiza??o administrativa em lote, inclusive em segundo plano com andamento e aviso persistente de conclus?o:
+A vers?o `2.10.4` adiciona ao cadastro de clientes, mant?m compatibilidade com PHP legado e inclui atualiza??o administrativa em lote, inclusive em segundo plano com andamento e aviso persistente de conclus?o:
 
 - pesquisa de endere?o e coordenadas em janela integrada;
 - sele??o autom?tica do provedor configurado em **Op??es ? Mapas**;
