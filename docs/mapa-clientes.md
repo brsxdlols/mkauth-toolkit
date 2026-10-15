@@ -47,4 +47,4 @@ Nenhuma credencial, senha ou chave de mapas é incluída no repositório. A chav
 
 Abra `/admin/addons/mapa-clientes/monitor/` ou `/admin/addons/mapa-clientes/monitor/?login=LOGIN`. O endereço antigo `?monitor=1` continua funcionando. O pacote instala a entrada e migra links configurados no dashboard com backup. AMPLIAR e o menu usam a entrada nova.
 
-Contagens e percentuais dependem da permissão nativa `perm_totais`. Os filtros continuam disponíveis sem valores agregados; as APIs respeitam os grupos do operador nos clientes principais e adicionais. Autorizações antigas de dispositivo sem identidade precisam ser renovadas por uma sessão administrativa para consultar grupos.
+Contagens e percentuais dependem da permissão nativa `perm_numClientes`. Os filtros continuam disponíveis sem valores agregados; as APIs respeitam os grupos do operador nos clientes principais e adicionais. Autorizações antigas de dispositivo sem identidade precisam ser renovadas por uma sessão administrativa para consultar grupos.

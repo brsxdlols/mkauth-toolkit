@@ -8,7 +8,7 @@ function check_map_policy($ok, $message) { if (!$ok) throw new RuntimeException(
 $link->query('CREATE TEMPORARY TABLE sis_perm (nome VARCHAR(64),usuario VARCHAR(64),permissao VARCHAR(3))');
 $link->query('CREATE TEMPORARY TABLE sis_acesso (login VARCHAR(64),cli_grupos VARCHAR(255))');
 $link->query("INSERT INTO sis_acesso VALUES ('restricted','A'),('full','full_clientes'),('empty',''),('quoted', 'O\'Brien')");
-$link->query("INSERT INTO sis_perm VALUES ('perm_totais','full','sim'),('perm_totais','restricted','nao')");
+$link->query("INSERT INTO sis_perm VALUES ('perm_numClientes','full','sim'),('perm_numClientes','restricted','nao'),('perm_totais','restricted','sim'),('perm_totais','full','nao')");
 $link->query("INSERT INTO sis_perm VALUES ('perm_clientes','full','sim'),('perm_clientes','restricted','sim'),('perm_clientes','empty','sim'),('perm_clientes','quoted','sim')");
 $link->query('CREATE TEMPORARY TABLE map_fixture_clients (login VARCHAR(64),grupo VARCHAR(64))');
 $link->query("INSERT INTO map_fixture_clients VALUES ('visible','A'),('hidden','B')");

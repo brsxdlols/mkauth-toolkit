@@ -30,7 +30,7 @@ if (!function_exists('permissao')) {
     }
 }
 
-function map_can_view_totals() { return (bool)permissao('perm_totais'); }
+function map_can_view_totals() { return (bool)permissao('perm_numClientes'); }
 
 function map_client_groups() {
     global $link;
