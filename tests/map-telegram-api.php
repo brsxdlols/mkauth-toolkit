@@ -14,6 +14,7 @@ function fixture_notify_switch(){return '';}
 function fixture_notify_saved(){return '';}
 $_SERVER['REQUEST_METHOD']=$case==='get'||$case==='forbidden'?'GET':'POST';
 $_POST=array('csrf'=>$case==='csrf'?'wrong':'fixture-csrf','action'=>strpos($case,'toggle-')===0?'toggle':($case==='disable'?'disable':'save'),'enabled'=>'1','mass'=>'1','threshold'=>'2','window_minutes'=>'2');
+if($case==='save-none')$_POST['mass']='0';
 ob_start();register_shutdown_function(function()use($case,$c){$raw=ob_get_clean();$data=json_decode($raw,true);$status=http_response_code();$ok=false;
  if($case==='get')$ok=$status===200&&$data['config']['token']===$c['token']&&$data['config']['token_present']===true;
  elseif($case==='csrf'||$case==='forbidden')$ok=$status===403&&$data['ok']===false;
@@ -22,7 +23,8 @@ ob_start();register_shutdown_function(function()use($case,$c){$raw=ob_get_clean(
  elseif($case==='toggle-on'||$case==='toggle-off'){$saved=mt_config();$ok=$status===200&&$saved['enabled']===($case==='toggle-on')&&$saved['token']===$c['token'];}
  elseif($case==='toggle-unverified')$ok=$status===200&&mt_config()['enabled']&&mt_config()['chat_title']==='Grupo validado';
  elseif($case==='toggle-test-failure')$ok=$status===400&&!mt_config()['enabled'];
- elseif($case==='unverified')$ok=$status===400&&$data['ok']===false;
+ elseif($case==='unverified')$ok=$status===200&&mt_config()['enabled']&&mt_config()['mass']&&!mt_config()['connect']&&!mt_config()['disconnect'];
+ elseif($case==='save-none')$ok=$status===200&&mt_config()['enabled']&&!mt_config()['mass']&&!mt_config()['connect']&&!mt_config()['disconnect'];
  if(!$ok){fwrite(STDERR,'FAIL Telegram API '.$case."\n");exit(1);}echo 'PASS Telegram API '.$case."\n";
 });
 $source=file_get_contents($root.'/telegram_api.hhvm');
