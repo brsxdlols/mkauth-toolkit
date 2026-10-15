@@ -21,6 +21,7 @@ function mt_demo($config,$kind,$transport='mt_api') {
         $texts['recovered']="🧪 TESTE — DADOS FICTÍCIOS\n".mt_message(array('kind'=>'connect','at'=>$now,'client'=>$sample,'offline_seconds'=>240,'offline_estimated'=>false),$config);
         $outages=array();for($i=0;$i<10;$i++){$fake=$sample;$fake['blocked']=$i>=7;$fake['district']=$i<7?'Jardim Leone (TESTE)':'Centro (TESTE)';$fake['cto']=$i<7?'342':'120';$fake['disconnected_epoch']=$now-(9-$i)*5;$outages[]=array('kind'=>'disconnect','at'=>$now,'client'=>$fake);}
         $texts['mass']="🧪 TESTE — DADOS FICTÍCIOS\n".mt_message(array('kind'=>'mass','at'=>$now,'count'=>10,'outages'=>$outages),$config);
+        if($kind==='connect'&&isset($state['individual'])&&$now-(int)$state['individual']['at']<=86400){$reply=$state['individual'];$texts['connect']=$texts['recovered'];}
         if($kind==='recovered'){$reply=isset($state['individual'])?$state['individual']:null;if(!$reply||time()-$reply['at']>86400)throw new RuntimeException('Envie primeiro o teste Cliente desconectou para responder à mensagem dele.');}
         if($kind==='partial'||$kind==='resolved'){$reply=isset($state['mass'])?$state['mass']:null;if(!$reply||time()-$reply['at']>86400)throw new RuntimeException('Envie primeiro o teste Queda massiva para responder à mensagem dele.');}
         $params=array('chat_id'=>$group['id'],'text'=>$texts[$kind],'disable_notification'=>'true');
