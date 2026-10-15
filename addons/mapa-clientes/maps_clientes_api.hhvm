@@ -222,7 +222,7 @@ if ($optionResult) {
     }
 }
 
-echo json_encode(array(
+$response = array(
     'ok' => true,
     'authenticated' => $authenticatedSession,
     'generated_at' => date('c'),
@@ -232,4 +232,6 @@ echo json_encode(array(
     'providers' => $providers,
     'branches' => $branches,
     'clients' => $clients
-), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+);
+if (!$canViewTotals) unset($response['summary']);
+echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

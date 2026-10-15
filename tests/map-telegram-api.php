@@ -6,7 +6,7 @@ require $root.'/lib/telegram_engine.php';
 if(!is_dir(mt_dir()))mkdir(mt_dir(),0700,true);
 $c=mt_defaults();$c['token']='123456:'.str_repeat('fixture',5);$c['chat_id']='-100123456789';$c['enabled']=true;if(in_array($case,array('toggle-on','toggle-unverified','save-preserve-enabled'),true)){$c['enabled']=false;$c['connect']=true;}if($case==='toggle-off')$c['token']='';mt_write('config',$c);if($case==='toggle-on')mt_write('verified',array('fingerprint'=>mt_fingerprint($c),'at'=>time()));else mt_write('verified',array());
 $link->query('CREATE TEMPORARY TABLE sis_perm (nome VARCHAR(64),usuario VARCHAR(64),permissao VARCHAR(3))');
-if($case!=='forbidden')$link->query("INSERT INTO sis_perm VALUES ('perm_config','fixture','sim'),('perm_clientes','fixture','sim'),('perm_totais','fixture','sim')");
+if($case!=='forbidden')$link->query("INSERT INTO sis_perm VALUES ('perm_config','fixture','sim'),('perm_clientes','fixture','sim'),('perm_numClientes','fixture','sim')");
 $_SESSION=array('MKA_Usuario'=>'fixture');
 function map_access_csrf(){return 'fixture-csrf';}
 function fixture_notify_switch(){return '';}
