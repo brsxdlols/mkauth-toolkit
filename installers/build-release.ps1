@@ -1,4 +1,4 @@
-param([string]$Version = "2.14.33")
+param([string]$Version = "2.14.34")
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Dist = Join-Path $Root "dist"
@@ -20,12 +20,12 @@ $Header = @(
     '#!/bin/sh',
     'set -eu',
     'SELF="$0"',
-    'TMP=$(mktemp -d /tmp/mkauth-geocodificacao.XXXXXX)',
+    'TMP=$(mktemp -d "${TMPDIR:-/tmp}/mkauth-geocodificacao.XXXXXX")',
     'trap ''rm -rf "$TMP"'' EXIT HUP INT TERM',
     'LINE=$(awk ''/^__ARCHIVE_BELOW__$/ { print NR + 1; exit }'' "$SELF")',
     '[ -n "$LINE" ] || { echo "ERRO: pacote invalido" >&2; exit 1; }',
     'tail -n +"$LINE" "$SELF" | tar -xzf - -C "$TMP"',
-    ('exec sh "$TMP/mkauth-geocodificacao-' + $Version + '/installers/install-all.sh"'),
+    ('sh "$TMP/mkauth-geocodificacao-' + $Version + '/installers/install-all.sh"'),
     'exit 0',
     '__ARCHIVE_BELOW__',
     ''

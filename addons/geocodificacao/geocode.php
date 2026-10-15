@@ -52,6 +52,26 @@ function respond($data, $status = 200)
     exit;
 }
 
+// Bound addon-originated Apache/PHP diagnostics during upstream outages.
+function geocodeErrorLogOnce($cfg)
+{
+    $dir = isset($cfg['cache_dir']) ? $cfg['cache_dir'] : '/var/tmp/mkauth-geocodificacao';
+    if (!is_dir($dir)) @mkdir($dir, 0770, true);
+    $path = $dir . '/error-log-rate.lock';
+    if (is_link($path)) return;
+    $lock = @fopen($path, 'c+');
+    if (!$lock) return;
+    if (@flock($lock, LOCK_EX | LOCK_NB)) {
+        $last = (int)stream_get_contents($lock);
+        if (time() - $last >= 3600) {
+            rewind($lock);ftruncate($lock, 0);fwrite($lock, (string)time());fflush($lock);
+            error_log('[mka-geocodificacao] Falha na consulta externa; diagnostico limitado a um aviso por hora.');
+        }
+        flock($lock, LOCK_UN);
+    }
+    fclose($lock);
+}
+
 function batchJobsDir($cfg)
 {
     $dir = (isset($cfg['cache_dir']) ? $cfg['cache_dir'] : sys_get_temp_dir()) . '/batch-jobs';
@@ -556,7 +576,7 @@ try {
     @file_put_contents($cacheFile, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
     respond($payload);
 } catch (Exception $e) {
-    error_log('[mka-geocodificacao] ' . get_class($e) . ': ' . $e->getMessage());
+    geocodeErrorLogOnce($cfg);
     if (strpos($e->getMessage(), 'RATE_LIMIT:') === 0) {
         respond(array('ok' => false, 'error' => substr($e->getMessage(), 12)), 429);
     }
