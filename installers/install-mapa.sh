@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.36"
+VERSION="1.3.37"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -18,6 +18,8 @@ PRESERVE_MONITOR_ENTRY=0
 
 fail() { echo "ERRO: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail "execute como root"
+command -v python3 >/dev/null 2>&1 || fail "python3 necessario para configurar o Telegram"
+[ -f "$SCRIPT_DIR/configure-map-apparmor.py" ] || fail "configurador AppArmor ausente no pacote"
 [ -d "$ADMIN_DIR/addons" ] || fail "diretorio de addons nao encontrado: $ADMIN_DIR/addons"
 [ -d "$CENTRAL_DIR" ] || fail "diretorio central nao encontrado: $CENTRAL_DIR"
 if [ -f "$ADDON_DIR/monitor/index.php" ] && grep -q 'suite-map-monitor-entry-v2' "$ADDON_DIR/monitor/index.php"; then
@@ -58,7 +60,7 @@ install -m 0644 "$SOURCE_DIR/lib/routeros_api.class.php" "$ADDON_DIR/lib/routero
 # Integra atalhos apos o carregamento dos menus nativos e do dashboard.
 sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d;/mka-map-shortcut-loader/d' "$ADDON_JS"
 cat >> "$ADDON_JS" <<'JS'
-(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.36';(document.head||document.documentElement).appendChild(s);})();
+(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.37';(document.head||document.documentElement).appendChild(s);})();
 JS
 DASH_TOP="$ADMIN_DIR/addons/dashboard/mkauth_dashboard_top.php"
 if [ -f "$DASH_TOP" ]; then
@@ -66,7 +68,7 @@ if [ -f "$DASH_TOP" ]; then
     if ! grep -q 'MKAUTH map and traffic shortcuts' "$DASH_TOP"; then
         cat >> "$DASH_TOP" <<'HTML'
 <!-- MKAUTH map and traffic shortcuts -->
-<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.36"></script>
+<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.37"></script>
 HTML
     fi
 fi
@@ -82,10 +84,14 @@ for name in maps.hhvm maps_clientes_api.hhvm maps_clientes_coord_update.hhvm; do
 # Telegram credentials live outside the web root, and remain disabled until configured.
 TELEGRAM_STATE="${MKAUTH_MAP_TELEGRAM_STATE:-/var/lib/mkauth-map-telegram}"
 TELEGRAM_CRON="${MKAUTH_MAP_TELEGRAM_CRON:-/etc/cron.d/mkauth-map-telegram}"
+case "$TELEGRAM_STATE" in /|/var|/var/lib|/tmp|/var/tmp|/opt|/opt/mk-auth) fail "pasta privada de Telegram invalida" ;; esac
+if [ -L "$TELEGRAM_STATE" ]; then fail "pasta privada de Telegram nao pode ser link simbolico"; fi
 if [ -d "$TELEGRAM_STATE" ]; then cp -a "$TELEGRAM_STATE" "$BACKUP_DIR/telegram-private-state"; fi
 mkdir -p "$TELEGRAM_STATE"
 chmod 0700 "$TELEGRAM_STATE"
 chown www-data:www-data "$TELEGRAM_STATE"
+find "$TELEGRAM_STATE" -maxdepth 1 -type f \( -name "*.json" -o -name "*.lock" \) -exec chown www-data:www-data {} \; -exec chmod 0600 {} \;
+python3 "$SCRIPT_DIR/configure-map-apparmor.py" --state "$TELEGRAM_STATE" --backup "$BACKUP_DIR/apparmor" --profiles "${MKAUTH_APPARMOR_PROFILES:-/etc/apparmor.d}"
 if [ -f "$TELEGRAM_CRON" ]; then cp -p "$TELEGRAM_CRON" "$BACKUP_DIR/telegram-cron"; fi
 # Paths used by cron are installation-owned; reject shell metacharacters.
 case "$TELEGRAM_STATE$ADDON_DIR$TELEGRAM_CRON" in *[!a-zA-Z0-9_./-]*) fail "caminho de Telegram invalido para cron" ;; esac
