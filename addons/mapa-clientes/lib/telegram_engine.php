@@ -172,9 +172,9 @@ function mt_message($event,$config) {
     $client=$event['client'];$cto=mt_cto_name(isset($client['cto'])?$client['cto']:'');$port=mt_clip(isset($client['port'])?$client['port']:'',30);
     $district=mt_clip(isset($client['district'])?$client['district']:'');$street=mt_clip(isset($client['street'])?$client['street']:'');$number=mt_clip(isset($client['number'])?$client['number']:'',30);
     $contract=array_key_exists('blocked',$client)?($client['blocked']?'🔒 Bloqueado':'✅ Ativo'):'Não informado';
-    $text=($event['kind']==='connect'?'🟢 CLIENTE CONECTADO':'🔴 CLIENTE DESCONECTADO')."\n\n📍 ".$cto.($port!==''?' · Porta '.$port:'')
+    $text=($event['kind']==='connect'?'🟢 CLIENTE CONECTADO':'🔴 CLIENTE DESCONECTADO')."\nNome: ".mt_clip($client['name'])."\n\n📍 ".$cto.($port!==''?' · Porta '.$port:'')
         ."\nBairro: ".($district!==''?$district:'Não informado')."\nEndereço: ".($street!==''?$street.($number!==''?', '.$number:''):'Não informado')
-        ."\n\nNome: ".mt_clip($client['name'])."\nLogin: ".mt_clip($client['login'])."\nContrato: ".$contract;
+        ."\n\nLogin: ".mt_clip($client['login'])."\nContrato: ".$contract;
     if($event['kind']==='connect'&&isset($event['offline_seconds'])) {
         $seconds=(int)$event['offline_seconds'];$days=intdiv($seconds,86400);$hours=intdiv($seconds%86400,3600);$minutes=intdiv($seconds%3600,60);
         $text.="\n⏱ Tempo desconectado".(!empty($event['offline_estimated'])?' estimado':'').': '.($days?$days.'d ':'').($hours?$hours.'h ':'').$minutes.'min '.($seconds%60).'s';
