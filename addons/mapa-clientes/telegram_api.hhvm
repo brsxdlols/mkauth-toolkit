@@ -1,0 +1,78 @@
+<?php
+require __DIR__.'/auth.php';
+require_map_access(true);
+require __DIR__.'/config.hhvm';
+require_once __DIR__.'/access_policy.php';
+require_once __DIR__.'/lib/telegram_engine.php';
+header('Content-Type: application/json; charset=utf-8');header('Cache-Control: no-store');
+function mt_reply($code,$data){http_response_code($code);echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
+if(!permissao('perm_config')||!permissao('perm_clientes'))mt_reply(403,array('ok'=>false,'error'=>'Sem permissão para configurar alertas.'));
+try {
+    $c=mt_config();
+    if($_SERVER['REQUEST_METHOD']==='GET') {
+        $public=$c;unset($public['operator']);$public['token_present']=$c['token']!=='';
+        $runtime=mt_read('runtime');$verified=mt_read('verified');
+        mt_reply(200,array('ok'=>true,'config'=>$public,'can_mass'=>map_can_view_totals(),'worker'=>array('interval_seconds'=>15,'last_sample'=>isset($runtime['last_sample'])?$runtime['last_sample']:null,'collection_ms'=>isset($runtime['collection_ms'])?$runtime['collection_ms']:null,'last_run'=>isset($runtime['last_run'])?$runtime['last_run']:null,'last_sent'=>isset($runtime['last_sent'])?$runtime['last_sent']:null,'error'=>isset($runtime['error'])?$runtime['error']:'','queue'=>isset($runtime['queue'])?count($runtime['queue']):0),'tested'=>isset($verified['fingerprint'])&&hash_equals($verified['fingerprint'],mt_fingerprint($c))));
+    }
+    if($_SERVER['REQUEST_METHOD']!=='POST')mt_reply(405,array('ok'=>false,'error'=>'Método não permitido.'));
+    if(!isset($_POST['csrf'])||!hash_equals(map_access_csrf(),(string)$_POST['csrf']))mt_reply(403,array('ok'=>false,'error'=>'Sessão expirada. Atualize o mapa.'));
+    $operator=map_operator_login();session_write_close();
+    $action=isset($_POST['action'])?(string)$_POST['action']:'';
+    // Disable never requires a working token, group or network connection.
+    if($action==='disable') {
+        $lock=fopen(mt_dir().'/config.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Não foi possível desativar.');
+        $c=mt_config();$before=$c;$c['enabled']=false;$c['revision']=bin2hex(random_bytes(12));mt_write('config',$c);flock($lock,LOCK_UN);fclose($lock);
+        $warning=mt_notify_switch($before,$c);
+        mt_reply(200,array('ok'=>true,'message'=>'Alertas desativados. Credenciais preservadas.'.($warning?' '.$warning:(!empty($before['enabled'])?' Confirmação enviada ao grupo.':'')),'warning'=>$warning));
+    }
+    // A single immediate toggle applies only to the persisted configuration.
+    if($action==='toggle') {
+        $lock=fopen(mt_dir().'/config.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Não foi possível alterar o envio.');
+        $c=mt_config();$before=$c;$c['enabled']=!$c['enabled'];
+        if($c['enabled']) {
+            mt_token($c['token']);mt_chat_id($c['chat_id']);
+            if(!$c['connect']&&!$c['disconnect']&&!$c['mass'])throw new RuntimeException('Escolha os alertas e salve antes de ativar.');
+            if($c['mass']&&!map_can_view_totals())throw new RuntimeException('Queda massiva exige a permissão Totais.');
+            $verified=mt_read('verified');
+            if(!isset($verified['fingerprint'])||!hash_equals($verified['fingerprint'],mt_fingerprint($c))||time()-(int)$verified['at']>86400)throw new RuntimeException('Envie uma mensagem de teste para o bot/grupo salvo antes de ativar.');
+            $c['operator']=$operator;
+        }
+        $c['revision']=bin2hex(random_bytes(12));mt_write('config',$c);flock($lock,LOCK_UN);fclose($lock);
+        $warning=mt_notify_switch($before,$c);
+        mt_reply(200,array('ok'=>true,'enabled'=>$c['enabled'],'message'=>($c['enabled']?'Envio automático ativado.':'Envio automático desativado.').($warning?' '.$warning:' Confirmação enviada ao grupo.'),'warning'=>$warning));
+    }
+    $candidate=$c;
+    if(isset($_POST['token'])&&trim((string)$_POST['token'])!=='')$candidate['token']=mt_token(trim((string)$_POST['token']));
+    if(isset($_POST['chat_id']))$candidate['chat_id']=trim((string)$_POST['chat_id']);
+    if(isset($_POST['timezone']))$candidate['timezone']=mt_timezone((string)$_POST['timezone']);
+    if(isset($_POST['customer_filter']))$candidate['customer_filter']=mt_customer_filter((string)$_POST['customer_filter']);
+    if($action==='groups')mt_reply(200,array('ok'=>true,'groups'=>mt_groups($candidate['token'])));
+    if($action==='health')mt_reply(200,array('ok'=>true,'chat'=>mt_validate_group($candidate),'message'=>'Bot ativo no grupo e com permissão de envio.'));
+    if($action==='demo') { require_once __DIR__.'/lib/telegram_demo.php'; $demo=mt_demo($candidate,isset($_POST['demo_kind'])?(string)$_POST['demo_kind']:''); mt_reply(200,array_merge(array('ok'=>true),$demo)); }
+    if($action==='test') {
+        $group=mt_validate_group($candidate);$candidate['chat_id']=$group['id'];
+        mt_api($candidate['token'],'sendMessage',array('chat_id'=>$group['id'],'text'=>"✅ MK-AUTH — teste de integração\nBot e grupo sincronizados. Salve os ajustes e use o botão Ativar para iniciar os alertas automáticos.", 'disable_notification'=>'true'));
+        mt_write('verified',array('fingerprint'=>mt_fingerprint($candidate),'at'=>time(),'chat_title'=>$group['title'],'bot'=>$group['bot']));
+        mt_reply(200,array('ok'=>true,'chat'=>$group,'message'=>'Mensagem de teste entregue. Bot ativo no grupo.'));
+    }
+    if($action!=='save')mt_reply(400,array('ok'=>false,'error'=>'Ação inválida.'));
+    // Saving preferences never changes the delivery state; the toggle owns it.
+    $candidate['enabled']=$c['enabled'];
+    foreach(array('connect','disconnect','mass') as $key)$candidate[$key]=isset($_POST[$key])&&$_POST[$key]==='1';
+    if($candidate['mass']&&!map_can_view_totals())mt_reply(403,array('ok'=>false,'error'=>'Queda massiva exige a permissão Totais.'));
+    $threshold=filter_var(isset($_POST['threshold'])?$_POST['threshold']:10,FILTER_VALIDATE_INT);
+    $minutes=filter_var(isset($_POST['window_minutes'])?$_POST['window_minutes']:2,FILTER_VALIDATE_INT);
+    if($threshold===false||$threshold<1||$threshold>10000||$minutes===false||$minutes<1||$minutes>30)throw new RuntimeException('Use quantidade entre 1 e 10000 e intervalo entre 1 e 30 minutos.');
+    $candidate['threshold']=$threshold;$candidate['window_minutes']=$minutes;
+    $verified=mt_read('verified');$matches=isset($verified['fingerprint'])&&hash_equals($verified['fingerprint'],mt_fingerprint($candidate));
+    if($candidate['enabled']) {
+        mt_token($candidate['token']);mt_chat_id($candidate['chat_id']);
+        if(!$candidate['connect']&&!$candidate['disconnect']&&!$candidate['mass'])throw new RuntimeException('Selecione pelo menos um tipo de alerta.');
+        if(!$matches||time()-(int)$verified['at']>86400)throw new RuntimeException('Envie um teste para este bot e grupo antes de ativar.');
+    }
+    $candidate['chat_title']=$matches?$verified['chat_title']:'';$candidate['operator']=$operator;$candidate['revision']=bin2hex(random_bytes(12));
+    $lock=fopen(mt_dir().'/config.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Não foi possível salvar.');
+    $before=mt_config();$candidate['enabled']=$before['enabled'];mt_write('config',$candidate);flock($lock,LOCK_UN);fclose($lock);
+    $warning=mt_notify_saved($before,$candidate);
+    mt_reply(200,array('ok'=>true,'message'=>($candidate['enabled']?'Configuração salva. Integração ativa.':'Configuração salva. Integração desativada.').($warning?' '.$warning:($candidate['chat_id']!==''?' Resumo enviado ao grupo.':'')),'warning'=>$warning));
+} catch(Exception $e){mt_reply(400,array('ok'=>false,'error'=>$e->getMessage()));}

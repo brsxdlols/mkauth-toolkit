@@ -1,8 +1,9 @@
-param([string]$Version = "2.14.29")
+param([string]$Version = "2.14.30")
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Dist = Join-Path $Root "dist"
 $Stage = Join-Path $Dist "mkauth-geocodificacao-$Version"
+if ([IO.Path]::GetFullPath($Dist) -ne [IO.Path]::GetFullPath((Join-Path $Root 'dist'))) { throw 'Diretorio de build invalido' }
 Remove-Item -Recurse -Force $Dist -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item -Recurse (Join-Path $Root "addons") $Stage
