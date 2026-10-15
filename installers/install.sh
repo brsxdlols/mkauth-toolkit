@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="2.10.4"
+VERSION="2.10.5"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/geocodificacao"
@@ -12,7 +12,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_ROOT="${MKAUTH_BACKUP_ROOT:-/root/backups}"
 BACKUP_DIR="$BACKUP_ROOT/mk-auth-geocodificacao-$STAMP-v$VERSION"
 CACHE_STATE="${MKAUTH_GEO_STATE:-/var/tmp/mkauth-geocodificacao}"
-LOADER=';document.addEventListener("DOMContentLoaded",function(){if(location.pathname.indexOf("/admin/")>=0&&!document.getElementById("mka-geocodificacao-js")){var s=document.createElement("script");s.id="mka-geocodificacao-js";s.src="/admin/addons/geocodificacao/geocodificacao.js?v=2.10.4";document.head.appendChild(s);}});'
+LOADER=';document.addEventListener("DOMContentLoaded",function(){if(location.pathname.indexOf("/admin/")>=0&&!document.getElementById("mka-geocodificacao-js")){var s=document.createElement("script");s.id="mka-geocodificacao-js";s.src="/admin/addons/geocodificacao/geocodificacao.js?v=2.10.5";document.head.appendChild(s);}});'
 
 fail() { echo "ERRO: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail "execute como root"
@@ -23,6 +23,8 @@ for file in config.php geocode.php geocodificacao.js vendor/leaflet.css vendor/l
 done
 
 mkdir -p "$BACKUP_DIR" "$ADDON_DIR"
+chmod 0700 "$BACKUP_DIR"
+printf 'geocodificacao\n' > "$BACKUP_DIR/.mkauth-toolkit-backup-v1"
 mkdir -p "$CACHE_STATE/batch-jobs"
 chmod 0770 "$CACHE_STATE" "$CACHE_STATE/batch-jobs"
 chown -R www-data:www-data "$CACHE_STATE" 2>/dev/null || true
@@ -46,9 +48,12 @@ printf '\n%s\n' "$LOADER" >> "$MAIN_JS"
 
 php -l "$ADDON_DIR/geocode.php" >/dev/null
 grep -q 'mka-geocodificacao-js' "$MAIN_JS"
-grep -q 'geocodificacao.js?v=2.10.4' "$MAIN_JS"
+grep -q 'geocodificacao.js?v=2.10.5' "$MAIN_JS"
 grep -q 'conf_mapas.hhvm' "$ADDON_DIR/geocodificacao.js"
 grep -q 'nativeMapSettings' "$ADDON_DIR/geocodificacao.js"
 
 printf '%s\n' "$VERSION" > "$ADDON_DIR/VERSION"
+chmod 0700 "$BACKUP_DIR"
+printf 'geocodificacao\n' > "$BACKUP_DIR/.mkauth-toolkit-backup-v1"
+touch "$BACKUP_DIR/.mkauth-toolkit-backup-complete"
 printf 'Instalacao concluida.\nVersao: %s\nBackup: %s\n' "$VERSION" "$BACKUP_DIR"

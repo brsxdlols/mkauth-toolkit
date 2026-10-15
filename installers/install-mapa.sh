@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION="1.3.34"
+VERSION="1.3.35"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 SOURCE_DIR="$ROOT_DIR/addons/mapa-clientes"
@@ -31,6 +31,8 @@ for file in VERSION index.hhvm monitor/index.php access_policy.php telegram_api.
 done
 
 mkdir -p "$BACKUP_DIR" "$STATE_DIR"
+chmod 0700 "$BACKUP_DIR"
+printf 'mapa-clientes\n' > "$BACKUP_DIR/.mkauth-toolkit-backup-v1"
 chmod 0770 "$STATE_DIR"
 chown www-data:www-data "$STATE_DIR" 2>/dev/null || true
 if [ -d "$ADDON_DIR" ]; then cp -a "$ADDON_DIR" "$BACKUP_DIR/mapa-clientes-addon"; else : > "$BACKUP_DIR/addon.absent"; fi
@@ -56,7 +58,7 @@ install -m 0644 "$SOURCE_DIR/lib/routeros_api.class.php" "$ADDON_DIR/lib/routero
 # Integra atalhos apos o carregamento dos menus nativos e do dashboard.
 sed -i '/mka-mapa-clientes-menu/d;/mka-trafego-cliente-menu/d;/addons\/mapa-clientes\/maps.hhvm/d;/mka-map-shortcut-loader/d' "$ADDON_JS"
 cat >> "$ADDON_JS" <<'JS'
-(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.34';(document.head||document.documentElement).appendChild(s);})();
+(function(){if(document.getElementById('mka-map-shortcut-loader'))return;var s=document.createElement('script');s.id='mka-map-shortcut-loader';s.src='/admin/addons/mapa-clientes/menu.js?v=1.3.35';(document.head||document.documentElement).appendChild(s);})();
 JS
 DASH_TOP="$ADMIN_DIR/addons/dashboard/mkauth_dashboard_top.php"
 if [ -f "$DASH_TOP" ]; then
@@ -64,7 +66,7 @@ if [ -f "$DASH_TOP" ]; then
     if ! grep -q 'MKAUTH map and traffic shortcuts' "$DASH_TOP"; then
         cat >> "$DASH_TOP" <<'HTML'
 <!-- MKAUTH map and traffic shortcuts -->
-<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.34"></script>
+<script src="/admin/addons/mapa-clientes/menu.js?v=1.3.35"></script>
 HTML
     fi
 fi
@@ -107,4 +109,7 @@ if [ -f "$SUITE_MONITOR_UPDATER" ]; then
     python3 "$SUITE_MONITOR_UPDATER" "$ADMIN_DIR" "$SUITE_MONITOR_BACKUP" || fail "Mapa instalado, mas runtime da suite nao sincronizado; consulte $SUITE_MONITOR_BACKUP e execute novamente o atualizador"
 fi
 
+chmod 0700 "$BACKUP_DIR"
+printf 'mapa-clientes\n' > "$BACKUP_DIR/.mkauth-toolkit-backup-v1"
+touch "$BACKUP_DIR/.mkauth-toolkit-backup-complete"
 printf 'Mapa protegido instalado.\nVersao: %s\nPagina: /admin/addons/mapa-clientes/\nMonitor: /admin/addons/mapa-clientes/monitor/\nBackup: %s\n' "$VERSION" "$BACKUP_DIR"
