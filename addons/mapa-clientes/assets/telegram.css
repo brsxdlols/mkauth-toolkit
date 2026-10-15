@@ -31,3 +31,7 @@
 #map-telegram-dialog .tg-contract-choices .tg-check{min-height:28px;margin:0}
 @media(min-width:601px){#map-telegram-dialog [data-tg-panel=alerts] .tg-contracts{margin:5px 0;gap:5px}}
 @media(max-width:600px){#map-telegram-dialog .tg-contracts{margin:5px 0;padding:0;gap:4px}}
+
+#map-telegram-dialog [data-tg-panel=alerts] .tg-grid>.tg-field,#map-telegram-dialog [data-tg-panel=alerts] .tg-grid>.tg-contracts{font-size:12px;line-height:18px;margin:5px 0;gap:5px}
+#map-telegram-dialog .tg-contract-title{line-height:18px}
+#map-telegram-dialog #tg-timezone,#map-telegram-dialog .tg-contract-choices{height:44px;min-height:44px;box-sizing:border-box}
