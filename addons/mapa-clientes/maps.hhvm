@@ -249,8 +249,8 @@ body.monitor-client>.leaflet-popup .traffic-mini-chart{flex:1 1 0!important;min-
 <script defer src="/admin/addons/shared/map_monitor.js?v=<?php echo (int)filemtime($mapSharedRoot.'/shared/map_monitor.js'); ?>"></script>
 <?php } ?>
 <?php if (permissao('perm_config') && permissao('perm_clientes')) { ?>
-<link rel="stylesheet" href="/admin/addons/mapa-clientes/assets/telegram.css?v=1.3.37">
-<script defer src="/admin/addons/mapa-clientes/assets/telegram.js?v=1.3.37"></script>
+<link rel="stylesheet" href="/admin/addons/mapa-clientes/assets/telegram.css?v=1.3.38">
+<script defer src="/admin/addons/mapa-clientes/assets/telegram.js?v=1.3.38"></script>
 <?php } ?>
 </head>
 <body class="<?php echo (isset($_GET['monitor']) && $_GET['monitor'] === '1') ? 'monitor-entry' : ''; ?>">

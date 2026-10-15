@@ -41,6 +41,12 @@ function mt_validate_group($c,$transport='mt_api') {
     if($status==='member'&&isset($chat['permissions']['can_send_messages'])&&!$chat['permissions']['can_send_messages'])throw new RuntimeException('O grupo não permite mensagens deste bot.');
     return array('id'=>(string)$chat['id'],'title'=>isset($chat['title'])?$chat['title']:'Grupo','bot'=>isset($me['username'])?$me['username']:'bot');
 }
+function mt_activation_check($c,$transport='mt_api') {
+    $group=mt_validate_group($c,$transport);
+    $sent=call_user_func($transport,$c['token'],'sendMessage',array('chat_id'=>$group['id'],'text'=>"✅ MK-AUTH — teste automático de ativação\nBot e grupo verificados. O envio automático será ativado após salvar a confirmação.",'disable_notification'=>'true'));
+    if(empty($sent['message_id']))throw new RuntimeException('O Telegram não confirmou a entrega do teste. Os alertas continuam desativados.');
+    return $group;
+}
 function mt_groups($token,$transport='mt_api') {
     call_user_func($transport,mt_token($token),'getMe',array());
     $updates=call_user_func($transport,$token,'getUpdates',array('limit'=>100,'timeout'=>0));$groups=array();
@@ -55,7 +61,7 @@ function mt_settings_message($c) {
     $filters=array('all'=>'Todos os contratos ativos','unblocked'=>'Somente não bloqueados','blocked'=>'Somente bloqueados');
     $zone=mt_timezone(isset($c['timezone'])?$c['timezone']:'America/Sao_Paulo');
     $clock=(new DateTimeImmutable('now',new DateTimeZone($zone)))->format('d/m/Y H:i:s P');
-    return ($c['enabled']?'✅ MK-AUTH — CONFIGURAÇÃO SALVA':'⏸ MK-AUTH — ENVIO DE ALERTAS DESATIVADO')
+    return '✅ MK-AUTH — CONFIGURAÇÃO SALVA'
         ."\nEnvio automático: ".($c['enabled']?'ATIVADO':'DESATIVADO')
         ."\nGrupo: ".($c['chat_title']?:$c['chat_id'])."\nChat ID: ".$c['chat_id']
         ."\nAlertas selecionados: ".($types?implode(', ',$types):'Nenhum')
@@ -73,7 +79,10 @@ function mt_notify_saved($before,$after,$transport='mt_api') {
 }
 function mt_notify_switch($before,$after,$transport='mt_api') {
     if((bool)$before['enabled']===(bool)$after['enabled'])return '';
-    return mt_notify_saved($before,$after,$transport);
+    $target=$after;if($target['token']===''||$target['chat_id']==='')$target=$before;
+    if($target['token']===''||$target['chat_id']==='')return '';
+    try {call_user_func($transport,$target['token'],'sendMessage',array('chat_id'=>$target['chat_id'],'text'=>($after['enabled']?'✅ MK-AUTH — ENVIO DE ALERTAS ATIVADO':'⏸ MK-AUTH — ENVIO DE ALERTAS DESATIVADO')."\n".mt_settings_message($after)));return '';}
+    catch(Exception $e){return 'Estado salvo, mas a confirmação não foi entregue ao Telegram. '.$e->getMessage();}
 }
 function mt_timezone($zone) {
     if(!in_array($zone,DateTimeZone::listIdentifiers(),true))throw new RuntimeException('Selecione um fuso horário válido.');
