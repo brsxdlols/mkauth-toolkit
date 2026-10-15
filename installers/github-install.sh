@@ -34,7 +34,7 @@ echo "Consultando a ultima versao no GitHub..."
 githubCurl \
     -H "$API_HEADER" \
     -H "$VERSION_HEADER" \
-    "$API_ROOT/releases/latest" > "$RELEASE_JSON" || fail "nao foi possivel consultar a Release"
+    -H "Cache-Control: no-cache"     "$API_ROOT/releases/latest?mkauth_refresh=$(date +%s)" > "$RELEASE_JSON" || fail "nao foi possivel consultar a Release"
 
 TAG=$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RELEASE_JSON" | head -n 1)
 RUN_ID=$(awk '
@@ -53,15 +53,26 @@ SHA_ID=$(awk '
 RUN_FILE="$WORK_DIR/installer.run"
 SHA_FILE="$WORK_DIR/installer.run.sha256"
 
+# Public release names remain stable when assets are republished. Numeric asset
+# IDs from cached metadata may refer to files that GitHub has already removed.
+VERSION=${TAG#v}
+printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "tag da Release invalida"
+RUN_URL="https://github.com/$REPOSITORY/releases/download/$TAG/mkauth-geocodificacao-$VERSION.run"
+SHA_URL="$RUN_URL.sha256"
+if [ -n "${GH_TOKEN:-}" ]; then
+    RUN_URL="$API_ROOT/releases/assets/$RUN_ID"
+    SHA_URL="$API_ROOT/releases/assets/$SHA_ID"
+fi
+
 echo "Baixando MK-AUTH Geocodificacao $TAG..."
 githubCurl \
     -H "Accept: application/octet-stream" \
     -H "$VERSION_HEADER" \
-    "$API_ROOT/releases/assets/$RUN_ID" -o "$RUN_FILE" || fail "falha ao baixar o instalador"
+    "$RUN_URL" -o "$RUN_FILE" || fail "falha ao baixar o instalador"
 githubCurl \
     -H "Accept: application/octet-stream" \
     -H "$VERSION_HEADER" \
-    "$API_ROOT/releases/assets/$SHA_ID" -o "$SHA_FILE" || fail "falha ao baixar a verificacao SHA-256"
+    "$SHA_URL" -o "$SHA_FILE" || fail "falha ao baixar a verificacao SHA-256"
 
 EXPECTED=$(awk '{print $1}' "$SHA_FILE")
 ACTUAL=$(sha256sum "$RUN_FILE" | awk '{print $1}')
