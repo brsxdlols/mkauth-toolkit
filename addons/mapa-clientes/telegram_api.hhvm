@@ -20,14 +20,14 @@ try {
     $action=isset($_POST['action'])?(string)$_POST['action']:'';
     // Disable never requires a working token, group or network connection.
     if($action==='disable') {
-        $lock=fopen(mt_dir().'/config.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Não foi possível desativar.');
+        $lock=mt_config_lock();
         $c=mt_config();$before=$c;$c['enabled']=false;$c['revision']=bin2hex(random_bytes(12));mt_write('config',$c);flock($lock,LOCK_UN);fclose($lock);
         $warning=mt_notify_switch($before,$c);
         mt_reply(200,array('ok'=>true,'message'=>'Alertas desativados. Credenciais preservadas.'.($warning?' '.$warning:(!empty($before['enabled'])?' Confirmação enviada ao grupo.':'')),'warning'=>$warning));
     }
     // A single immediate toggle applies only to the persisted configuration.
     if($action==='toggle') {
-        $lock=fopen(mt_dir().'/config.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Não foi possível alterar o envio.');
+        $lock=mt_config_lock();
         $c=mt_config();$before=$c;$c['enabled']=!$c['enabled'];
         if($c['enabled']) {
             mt_token($c['token']);mt_chat_id($c['chat_id']);
@@ -71,7 +71,7 @@ try {
         if(!$matches||time()-(int)$verified['at']>86400)throw new RuntimeException('Envie um teste para este bot e grupo antes de ativar.');
     }
     $candidate['chat_title']=$matches?$verified['chat_title']:'';$candidate['operator']=$operator;$candidate['revision']=bin2hex(random_bytes(12));
-    $lock=fopen(mt_dir().'/config.lock','c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Não foi possível salvar.');
+    $lock=mt_config_lock();
     $before=mt_config();$candidate['enabled']=$before['enabled'];mt_write('config',$candidate);flock($lock,LOCK_UN);fclose($lock);
     $warning=mt_notify_saved($before,$candidate);
     mt_reply(200,array('ok'=>true,'message'=>($candidate['enabled']?'Configuração salva. Integração ativa.':'Configuração salva. Integração desativada.').($warning?' '.$warning:($candidate['chat_id']!==''?' Resumo enviado ao grupo.':'')),'warning'=>$warning));

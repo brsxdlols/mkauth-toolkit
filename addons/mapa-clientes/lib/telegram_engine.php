@@ -8,6 +8,7 @@ function mt_write($name,$value) {
     chmod($tmp,0600);$json=json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     if($json===false||file_put_contents($tmp,$json,LOCK_EX)===false||!rename($tmp,$dir.'/'.$name.'.json')){@unlink($tmp);throw new RuntimeException('Falha ao salvar Telegram.');}
 }
+function mt_config_lock() { $lock=@fopen(mt_dir().'/config.lock','c');if(!$lock)throw new RuntimeException('Servidor sem permissão para salvar o Telegram. Atualize o addon para corrigir as permissões e o AppArmor.');if(!flock($lock,LOCK_EX|LOCK_NB)){fclose($lock);throw new RuntimeException('Outra configuração está sendo salva. Aguarde e tente novamente.');}return $lock;}
 function mt_defaults() { return array('enabled'=>false,'token'=>'','chat_id'=>'','chat_title'=>'','connect'=>false,'disconnect'=>false,'mass'=>true,'threshold'=>10,'window_minutes'=>2,'timezone'=>'America/Sao_Paulo','customer_filter'=>'all','operator'=>'','revision'=>''); }
 function mt_config() { return array_merge(mt_defaults(),mt_read('config')); }
 function mt_fingerprint($c) { return hash('sha256',$c['token'].'|'.$c['chat_id']); }
