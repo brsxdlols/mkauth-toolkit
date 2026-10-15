@@ -1,4 +1,4 @@
-param([string]$Version = "2.14.40")
+param([string]$Version = "2.14.41")
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Dist = Join-Path $Root "dist"
