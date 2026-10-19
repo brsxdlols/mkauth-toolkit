@@ -23,12 +23,14 @@ try {
     $priorRevision=hash('sha256',$config['operator'].'|'.$primary.'|'.$additional.'|'.$config['customer_filter']);
     $legacyRevision=hash('sha256',$config['revision'].'|'.$primary.'|'.$additional.($config['customer_filter']==='all'?'':'|'.$config['customer_filter']));
     $old=mt_read('transitions');if(!isset($old['revision'])||($old['revision']!==$revision&&$old['revision']!==$legacyRevision&&$old['revision']!==$priorRevision)){$old=array();$runtime['queue']=array();}
-    $state=mt_detect($old,$clients,$config,time());$events=$state['events'];$runtime['last_sample']=time();$runtime['collection_ms']=(int)round((microtime(true)-$pollStarted)*1000);$runtime['last_detected_count']=count($events);if($events){$runtime['last_detected_at']=time();$runtime['last_detected_kinds']=array_column($events,'kind');}unset($state['events']);$state['revision']=$revision;
-    $queue=isset($runtime['queue'])?$runtime['queue']:array();$ids=array();foreach($queue as $item)$ids[$item['id']]=true;
+    $state=mt_detect($old,$clients,$config,time());$events=array_merge($state['events'],mt_mass_updates($clients,$config,time()));$runtime['last_sample']=time();$runtime['collection_ms']=(int)round((microtime(true)-$pollStarted)*1000);$runtime['last_detected_count']=count($events);if($events){$runtime['last_detected_at']=time();$runtime['last_detected_kinds']=array_column($events,'kind');}unset($state['events']);$state['revision']=$revision;
+    $queue=isset($runtime['queue'])?$runtime['queue']:array();$latest=array();foreach($events as $event)if($event['kind']==='mass_update')$latest[$event['incident_id']]=$event['id'];
+    $queue=array_values(array_filter($queue,function($item)use($latest){$e=$item['event'];return $e['kind']!=='mass_update'||(isset($latest[$e['incident_id']])&&$latest[$e['incident_id']]===$e['id']);}));
+    $ids=array();foreach($queue as $item)$ids[$item['id']]=true;
     $new=array();foreach($events as $event)if(!isset($ids[$event['id']])){mt_audit_event($event,'detected');$new[]=array('id'=>$event['id'],'at'=>time(),'event'=>$event,'tries'=>0,'next'=>0);$ids[$event['id']]=true;}
     // Mass alerts have priority; individual notices retain their event timestamps.
-    foreach($new as $item){if($item['event']['kind']==='mass')array_unshift($queue,$item);else $queue[]=$item;}
-    $runtime['queue']=array_values(array_filter($queue,function($item)use($clients,$config){if(time()-$item['at']>3600||$item['tries']>=5)return false;$e=$item['event'];if($e['kind']==='mass'){foreach($e['client_keys'] as $key)if(!isset($clients[$key]))return false;return true;}return isset($clients[$e['client_key']])&&(bool)mt_filter_clients(array($e['client_key']=>$clients[$e['client_key']]),$config);}));
+    foreach($new as $item){if(($item['event']['kind']==='mass'||$item['event']['kind']==='mass_update'))array_unshift($queue,$item);else $queue[]=$item;}
+    $runtime['queue']=array_values(array_filter($queue,function($item)use($clients,$config){if(time()-$item['at']>3600||$item['tries']>=5)return false;$e=$item['event'];if($e['kind']==='mass'||$e['kind']==='mass_update'){if(empty($config['mass']))return false;foreach($e['client_keys'] as $key)if(!isset($clients[$key]))return false;return true;}return isset($clients[$e['client_key']])&&(bool)mt_filter_clients(array($e['client_key']=>$clients[$e['client_key']]),$config);}));
     if(count($runtime['queue'])>1000){$runtime['queue']=array_slice($runtime['queue'],0,1000);$runtime['error']='Fila limitada a 1000 avisos; reduza os alertas individuais.';}else $runtime['error']='';
     mt_write('runtime',$runtime);mt_write('transitions',$state);$deadline=microtime(true)+25;$sent=0;
     while($runtime['queue']&&$sent<3&&microtime(true)<$deadline) {
