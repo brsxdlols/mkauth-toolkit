@@ -4,6 +4,7 @@ require_map_access(true);
 $authenticatedSession = true;
 require __DIR__ . '/config.hhvm';
 require_once __DIR__ . '/access_policy.php';
+require_once __DIR__ . '/lib/region_messages.php';
 $canViewTotals = map_can_view_totals();
 $primaryScope = map_client_scope_sql('c');
 $additionalScope = map_client_scope_sql('owner');
@@ -227,6 +228,8 @@ $response = array(
     'authenticated' => $authenticatedSession,
     'generated_at' => date('c'),
     'can_view_totals' => $canViewTotals,
+    'can_message' => permissao('perm_clientes') && permissao('perm_mensagem'),
+    'message_channels' => map_message_channels(),
     'summary' => map_api_summary($clients, $canViewTotals),
     'options' => $options,
     'providers' => $providers,
