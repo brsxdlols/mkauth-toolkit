@@ -5,7 +5,7 @@
  };
  window.mkaMapRegionSelection=function(L,map,onChange,options){
   options=options||{};
-  var container=map.getContainer(),bounds=null,selected=null,preview=null,start=null,last=null,armed=false,saved=[],blockClick=false;
+  var container=map.getContainer(),bounds=null,selected=null,preview=null,start=null,last=null,armed=false,spaceHeld=false,saved=[],blockClick=false,regions=[],selectedLayers=[];
   var control=L.control({position:'bottomleft'}),box,text,clear,main,toolbar,summary,actions,items=[],permissions={},polygonMode=false,vertices=[],vertexLayers=[],polygonButton;
   control.onAdd=function(){
    box=L.DomUtil.create('div','map-region-control');text=document.createElement('span');text.setAttribute('role','status');text.setAttribute('aria-live','polite');
@@ -13,7 +13,7 @@
    main=document.createElement('div');main.className='map-region-main';main.appendChild(text);toolbar=document.createElement('div');toolbar.className='map-region-toolbar';polygonButton=document.createElement('button');polygonButton.type='button';polygonButton.textContent='Polígono';polygonButton.addEventListener('click',function(){if(polygonMode){release();return;}release();polygonMode=true;arm();status();});toolbar.appendChild(polygonButton);toolbar.appendChild(clear);summary=document.createElement('div');summary.className='map-region-summary';summary.setAttribute('aria-live','polite');actions=document.createElement('div');actions.className='map-region-actions';box.appendChild(main);box.appendChild(toolbar);L.DomEvent.disableClickPropagation(box);L.DomEvent.disableScrollPropagation(box);
    clear.addEventListener('click',function(){reset(true);});status();return box;
   };
-  function status(){if(!text)return;polygonButton.textContent=polygonMode?'Cancelar desenho':'Polígono';polygonButton.setAttribute('aria-pressed',polygonMode?'true':'false');text.textContent=polygonMode?'Clique nos pontos do mapa. Feche no primeiro ponto ou pressione Enter. Esc limpa.':armed?'Arraste dentro do mapa para selecionar. Solte Espaço para navegar.':bounds?'Região selecionada · Esc ou Limpar região para remover.':'Segure Espaço + arraste no mapa para selecionar uma região.';clear.disabled=!bounds&&!polygonMode;}
+  function status(){if(!text)return;polygonButton.textContent=polygonMode?'Cancelar desenho':'Polígono';polygonButton.setAttribute('aria-pressed',polygonMode?'true':'false');text.textContent=polygonMode?'Clique nos pontos do mapa. Feche no primeiro ponto ou pressione Enter. Esc limpa.':armed?'Arraste para retângulo ou clique para iniciar um polígono.':bounds?'Áreas selecionadas · Espaço para acrescentar. Esc ou Limpar região remove tudo.':'Segure Espaço: arraste para retângulo ou clique para polígono.';clear.disabled=!bounds&&!polygonMode;}
   function setClients(clients,allowed){
    items=clients;permissions=allowed||{};
    if(bounds&&permissions.canViewTotals===true){
@@ -37,11 +37,12 @@
   function finish(){
    if(!start||!last){cancel();return;}
    var valid=Math.abs(last.x-start.x)>=5&&Math.abs(last.y-start.y)>=5;
-   if(valid){if(selected)map.removeLayer(selected);selected=preview;preview=null;bounds=selected.getBounds();onChange(bounds);}
+   if(valid){var shape=preview;preview=null;commitRegion(shape,shape.getBounds());onChange(bounds);}
    cancel();status();
   }
+  function commitRegion(shape,region){selectedLayers.push(shape);regions.push(region);bounds={contains:function(point){return regions.some(function(part){return part.contains(point);});}};}
   function clearVertices(){vertexLayers.forEach(function(layer){map.removeLayer(layer);});vertexLayers=[];vertices=[];}
-  function release(){cancel();clearVertices();polygonMode=false;restore();status();}
+  function release(){spaceHeld=false;cancel();clearVertices();polygonMode=false;restore();status();}
   function polygonContains(ring,point){
    var x=Number(point[1]),y=Number(point[0]),inside=false;
    for(var i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -53,8 +54,8 @@
   function finishPolygon(){
    if(vertices.length<3)return;
    var ring=vertices.slice(),area=0;ring.forEach(function(a,i){var b=ring[(i+1)%ring.length];area+=a.lng*b.lat-b.lng*a.lat;});if(Math.abs(area)<1e-12)return;
-   if(selected)map.removeLayer(selected);selected=preview;preview=null;bounds={contains:function(point){return polygonContains(ring,point);},getBounds:function(){return selected.getBounds();}};
-   release();onChange(bounds);
+   var shape=preview;preview=null;commitRegion(shape,{contains:function(point){return polygonContains(ring,point);}});
+   clearVertices();polygonMode=false;status();if(!spaceHeld)restore();onChange(bounds);
   }
   function polygonClick(event){
    var pos=point(event),latlng=map.containerPointToLatLng(pos);
@@ -63,25 +64,26 @@
    vertices.push(latlng);vertexLayers.push(L.circleMarker(latlng,{radius:5,color:'#1769aa',fillColor:'#fff',fillOpacity:1,interactive:false}).addTo(map));
    if(preview)preview.setLatLngs(vertices);else preview=L.polygon(vertices,{color:'#1769aa',weight:2,fillOpacity:0.15,interactive:false}).addTo(map);
   }
-  function reset(notify){release();if(selected)map.removeLayer(selected);selected=null;bounds=null;status();if(notify)onChange(null);}
+  function reset(notify){release();selectedLayers.forEach(function(shape){map.removeLayer(shape);});selectedLayers=[];regions=[];selected=null;bounds=null;status();if(notify)onChange(null);}
   function point(event){return map.mouseEventToContainerPoint(event);}
   function update(event){last=point(event);preview.setBounds(L.latLngBounds(map.containerPointToLatLng(start),map.containerPointToLatLng(last)));}
   function keydown(event){
    if(polygonMode&&event.key==='Enter'&&!editable(event.target)){event.preventDefault();finishPolygon();return;}
-   if(event.key==='Escape'&&(bounds||armed)){event.preventDefault();reset(true);return;}
-   if((event.code!=='Space'&&event.key!==' ')||polygonMode||event.repeat||editable(event.target)||!available())return;
+   if(event.key==='Escape'&&(bounds||armed||polygonMode)){event.preventDefault();reset(true);return;}
+   if((event.code!=='Space'&&event.key!==' ')||event.repeat||editable(event.target)||!available())return;
+   spaceHeld=true;
    event.preventDefault();event.stopPropagation();arm();
   }
-  function keyup(event){if(event.code==='Space'||event.key===' '){if(armed&&!polygonMode){event.preventDefault();finish();restore();}}}
+  function keyup(event){if(event.code==='Space'||event.key===' '){spaceHeld=false;if(armed){event.preventDefault();if(!polygonMode)finish();restore();}}}
   function down(event){
-   if(polygonMode)return;
+   if(polygonMode){if(event.button===0&&!event.target.closest('.leaflet-control,.leaflet-popup'))arm();return;}
    if(!armed||event.button!==0||event.target.closest('.leaflet-control,.leaflet-popup'))return;
    event.preventDefault();event.stopImmediatePropagation();cancel();start=last=point(event);
    preview=L.rectangle(L.latLngBounds(map.containerPointToLatLng(start),map.containerPointToLatLng(start)),{color:'#1769aa',weight:2,fillColor:'#2684ff',fillOpacity:0.15,interactive:false}).addTo(map);
   }
   function move(event){if(!armed||!start)return;event.preventDefault();event.stopPropagation();update(event);}
-  function up(event){if(!armed||!start)return;event.preventDefault();event.stopPropagation();update(event);blockClick=true;finish();setTimeout(function(){blockClick=false;},0);}
-  function click(event){if(polygonMode&&!event.target.closest('.leaflet-control,.leaflet-popup')){event.preventDefault();event.stopImmediatePropagation();polygonClick(event);return;}if(armed||blockClick){if(!event.target.closest('.leaflet-control')){event.preventDefault();event.stopImmediatePropagation();}}}
+  function up(event){if(!armed||!start)return;event.preventDefault();event.stopPropagation();update(event);blockClick=true;if(last.distanceTo(start)<5){cancel();polygonMode=true;polygonClick(event);status();}else finish();setTimeout(function(){blockClick=false;},0);}
+  function click(event){if(blockClick&&!event.target.closest('.leaflet-control')){event.preventDefault();event.stopImmediatePropagation();return;}if(polygonMode&&!event.target.closest('.leaflet-control,.leaflet-popup')){event.preventDefault();event.stopImmediatePropagation();polygonClick(event);if(!spaceHeld)restore();return;}if(armed||blockClick){if(!event.target.closest('.leaflet-control')){event.preventDefault();event.stopImmediatePropagation();}}}
   function visibility(){if(document.hidden)release();}
   document.addEventListener('keydown',keydown,true);document.addEventListener('keyup',keyup,true);
   container.addEventListener('pointerdown',down,true);document.addEventListener('pointermove',move,true);document.addEventListener('pointerup',up,true);container.addEventListener('click',click,true);
