@@ -45,6 +45,9 @@ function mt_mass_updates($clients,$config,$now) {
         foreach($keys as $key){if(!isset($clients[$key])){$inScope=false;break;}if(!empty($clients[$key]['online']))$recovered[]=$key;}
         if(!$inScope)continue;
         sort($recovered);$before=$incident['recovered_keys'];sort($before);
+        $batch=max(1,(int)$config['threshold']);
+        // Notify only a new recovery milestone, never a decrease or one-client flap.
+        if(count($recovered)!==count($keys)&&intdiv(count($recovered),$batch)<=intdiv(count($before),$batch))continue;
         if($before===$recovered)continue;
         $events[]=array('id'=>hash('sha256',$incident['incident_id'].'|recovery|'.(isset($incident['sequence'])?$incident['sequence']:0).'|'.implode('|',$recovered)),
             'kind'=>'mass_update','incident_id'=>$incident['incident_id'],'at'=>$now,'started_at'=>$incident['started_at'],
