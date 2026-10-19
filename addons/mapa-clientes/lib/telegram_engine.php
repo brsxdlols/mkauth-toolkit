@@ -65,7 +65,7 @@ function mt_settings_message($c) {
         ."\nEnvio: ".($c['enabled']?'ATIVADO':'DESATIVADO')
         ."\nAlertas: ".($types?implode(', ',$types):'Nenhum selecionado')
         ."\nContratos individuais: ".$filters[mt_customer_filter(isset($c['customer_filter'])?$c['customer_filter']:'all')]
-        .($c['mass']?"\nQueda massiva: ".$c['threshold'].' clientes em '.$c['window_minutes'].' min (ativos e bloqueados)':'')
+        .($c['mass']?"\nQueda massiva: ".$c['threshold'].' clientes em '.$c['window_minutes'].' min (ativos e bloqueados)'."\nRetornos: em lotes de ".$c['threshold'].'; normalização total sempre enviada':'')
         ."\nSalvo em: ".$clock;
 }
 function mt_notify_saved($before,$after,$transport='mt_api') {
