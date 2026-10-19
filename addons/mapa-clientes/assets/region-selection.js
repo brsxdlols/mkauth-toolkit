@@ -3,16 +3,28 @@
  window.mkaClientInRegion=function(client,bounds){
   return !bounds || (!!client.has_coordinates && client.lat!=null && client.lon!=null && client.lat!=='' && client.lon!=='' && Number.isFinite(Number(client.lat)) && Number.isFinite(Number(client.lon)) && bounds.contains([Number(client.lat),Number(client.lon)]));
  };
- window.mkaMapRegionSelection=function(L,map,onChange){
+ window.mkaMapRegionSelection=function(L,map,onChange,options){
+  options=options||{};
   var container=map.getContainer(),bounds=null,selected=null,preview=null,start=null,last=null,armed=false,saved=[],blockClick=false;
-  var control=L.control({position:'bottomleft'}),box,text,clear;
+  var control=L.control({position:'bottomleft'}),box,text,clear,main,toolbar,summary,actions,items=[],permissions={};
   control.onAdd=function(){
    box=L.DomUtil.create('div','map-region-control');text=document.createElement('span');text.setAttribute('role','status');text.setAttribute('aria-live','polite');
    clear=document.createElement('button');clear.type='button';clear.textContent='Limpar região';clear.disabled=true;
-   box.appendChild(text);box.appendChild(clear);L.DomEvent.disableClickPropagation(box);L.DomEvent.disableScrollPropagation(box);
+   main=document.createElement('div');main.className='map-region-main';main.appendChild(text);toolbar=document.createElement('div');toolbar.className='map-region-toolbar';toolbar.appendChild(clear);summary=document.createElement('div');summary.className='map-region-summary';summary.setAttribute('aria-live','polite');actions=document.createElement('div');actions.className='map-region-actions';box.appendChild(main);box.appendChild(toolbar);L.DomEvent.disableClickPropagation(box);L.DomEvent.disableScrollPropagation(box);
    clear.addEventListener('click',function(){reset(true);});status();return box;
   };
   function status(){if(!text)return;text.textContent=armed?'Arraste dentro do mapa para selecionar. Solte Espaço para navegar.':bounds?'Região selecionada · Esc ou Limpar região para remover.':'Segure Espaço + arraste no mapa para selecionar uma região.';clear.disabled=!bounds;}
+  function setClients(clients,allowed){
+   items=clients;permissions=allowed||{};
+   if(bounds&&permissions.canViewTotals===true){
+    var online=items.filter(function(c){return c.status==='online';}).length,offline=items.filter(function(c){return c.status==='offline';}).length;
+    summary.textContent='Selecionados: '+items.length+' · Online: '+online+' · Offline: '+offline;main.appendChild(summary);
+   }else{summary.textContent='';summary.remove();}
+   if(bounds&&permissions.canMessage===true){
+    if(!actions.children.length)[['wapp','WhatsApp'],['email','E-mail'],['sms','SMS']].forEach(function(pair){var button=document.createElement('button');button.type='button';button.dataset.channel=pair[0];button.textContent=pair[1];button.title='Abrir composição nativa de '+pair[1]+' para os clientes selecionados';button.addEventListener('click',function(){if(items.length&&typeof options.onMessage==='function')options.onMessage(pair[0]);});actions.appendChild(button);});
+    Array.from(actions.children).forEach(function(button){var enabled=!permissions.channels||permissions.channels[button.dataset.channel]===true;button.disabled=!items.length||!enabled;button.title=enabled?'Abrir composição nativa de '+button.textContent+' para os clientes selecionados':'Canal não configurado no MK-AUTH';});toolbar.insertBefore(actions,clear);
+   }else{actions.replaceChildren();actions.remove();}
+  }
   function editable(target){return !!(target&&target.closest&&target.closest('input,textarea,select,button,a,[role="button"],[contenteditable]:not([contenteditable="false"])'));}
   function available(){return !document.body.classList.contains('monitor-client')&&!document.querySelector('dialog[open],.guide-modal.show,#coordinate-modal.show');}
   function arm(){
@@ -51,7 +63,7 @@
   container.addEventListener('pointerdown',down,true);document.addEventListener('pointermove',move,true);document.addEventListener('pointerup',up,true);container.addEventListener('click',click,true);
   window.addEventListener('blur',release);document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',release);document.addEventListener('pointercancel',release,true);
   control.addTo(map);
-  return {clear:function(notify){reset(notify!==false);},getBounds:function(){return bounds;},destroy:function(){
+  return {setClients:setClients,clear:function(notify){reset(notify!==false);},getBounds:function(){return bounds;},destroy:function(){
    reset(false);document.removeEventListener('keydown',keydown,true);document.removeEventListener('keyup',keyup,true);container.removeEventListener('pointerdown',down,true);document.removeEventListener('pointermove',move,true);document.removeEventListener('pointerup',up,true);container.removeEventListener('click',click,true);window.removeEventListener('blur',release);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('pagehide',release);document.removeEventListener('pointercancel',release,true);control.remove();
   }};
  };
