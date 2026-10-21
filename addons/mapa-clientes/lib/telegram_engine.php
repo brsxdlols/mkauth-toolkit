@@ -12,8 +12,8 @@ function mt_config_lock() { $lock=@fopen(mt_dir().'/config.lock','c');if(!$lock)
 function mt_defaults() { return array('enabled'=>false,'token'=>'','chat_id'=>'','chat_title'=>'','connect'=>false,'disconnect'=>false,'mass'=>true,'threshold'=>10,'trigger_mode'=>'count','mass_levels'=>array(10),'recovery_percent'=>80,'window_minutes'=>2,'timezone'=>'America/Sao_Paulo','customer_filter'=>'all','operator'=>'','revision'=>''); }
 function mt_mass_levels($value){
     if(is_string($value))$value=$value===''?array():explode(',',$value);
-    if(!is_array($value)||count($value)>5)throw new RuntimeException('Selecione níveis válidos de queda.');
-    $out=array();foreach($value as $v){$n=filter_var($v,FILTER_VALIDATE_INT);if($n===false||!in_array($n,array(10,20,50,70,80),true))throw new RuntimeException('Níveis de queda: 10%, 20%, 50%, 70% e 80%.');$out[$n]=$n;}
+    if(!is_array($value)||count($value)>9)throw new RuntimeException('Selecione níveis válidos de queda.');
+    $out=array();foreach($value as $v){$n=filter_var($v,FILTER_VALIDATE_INT);if($n===false||!in_array($n,array(10,20,30,40,50,60,70,80,90),true))throw new RuntimeException('Níveis de queda: 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80% e 90%.');$out[$n]=$n;}
     sort($out);return array_values($out);
 }
 function mt_recovery_percent($c){$n=isset($c['recovery_percent'])?(int)$c['recovery_percent']:80;return in_array($n,array(70,80,90,100),true)?$n:80;}

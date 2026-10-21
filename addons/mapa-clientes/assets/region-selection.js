@@ -76,6 +76,7 @@
   }
   function keyup(event){if(event.code==='Space'||event.key===' '){spaceHeld=false;if(armed){event.preventDefault();if(!polygonMode)finish();restore();}}}
   function down(event){
+   blockClick=false;panMoved=false;
    if(event.button!==0||event.target.closest('.leaflet-control,.leaflet-popup'))return;
    var pos=point(event),groups=editGroups.slice();if(polygonMode)groups.push({ring:vertices,shape:preview,handles:vertexLayers,draft:true});
    for(var g=groups.length-1;g>=0;g--){for(var i=0;i<groups[g].ring.length;i++){if(map.latLngToContainerPoint(groups[g].ring[i]).distanceTo(pos)<=9){editing={group:groups[g],index:i,start:pos,moved:false};arm();event.preventDefault();event.stopImmediatePropagation();return;}}}
@@ -89,10 +90,10 @@
    if(panStart&&!spaceHeld){if(point(event).distanceTo(panStart)>=5)panMoved=true;return;}
    if(!armed||!start)return;event.preventDefault();event.stopPropagation();update(event);}
   function up(event){
-   if(editing){var moved=editing.moved;editing=null;if(!spaceHeld)restore();if(moved){event.preventDefault();event.stopPropagation();blockClick=true;setTimeout(function(){blockClick=false;},0);}return;}
-   if(panStart){panStart=null;if(panMoved){blockClick=true;setTimeout(function(){blockClick=false;panMoved=false;},0);}return;}
-   if(!armed||!start)return;event.preventDefault();event.stopPropagation();update(event);blockClick=true;if(last.distanceTo(start)<5){cancel();polygonMode=true;polygonClick(event);status();}else finish();setTimeout(function(){blockClick=false;},0);}
-  function click(event){if(blockClick&&!event.target.closest('.leaflet-control')){event.preventDefault();event.stopImmediatePropagation();return;}if(polygonMode&&!event.target.closest('.leaflet-control,.leaflet-popup')){event.preventDefault();event.stopImmediatePropagation();polygonClick(event);if(!spaceHeld)restore();return;}if(armed||blockClick){if(!event.target.closest('.leaflet-control')){event.preventDefault();event.stopImmediatePropagation();}}}
+   if(editing){var moved=editing.moved;editing=null;if(!spaceHeld)restore();if(moved){event.preventDefault();event.stopPropagation();blockClick=true;}return;}
+   if(panStart){panStart=null;if(panMoved){blockClick=true;}return;}
+   if(!armed||!start)return;event.preventDefault();event.stopPropagation();update(event);blockClick=true;if(last.distanceTo(start)<5){cancel();polygonMode=true;polygonClick(event);status();}else finish();}
+  function click(event){if(blockClick&&!event.target.closest('.leaflet-control')){blockClick=false;event.preventDefault();event.stopImmediatePropagation();return;}if(polygonMode&&!event.target.closest('.leaflet-control,.leaflet-popup')){event.preventDefault();event.stopImmediatePropagation();polygonClick(event);if(!spaceHeld)restore();return;}if(armed||blockClick){if(!event.target.closest('.leaflet-control')){event.preventDefault();event.stopImmediatePropagation();}}}
   function visibility(){if(document.hidden)release();}
   document.addEventListener('keydown',keydown,true);document.addEventListener('keyup',keyup,true);
   container.addEventListener('pointerdown',down,true);document.addEventListener('pointermove',move,true);document.addEventListener('pointerup',up,true);container.addEventListener('click',click,true);
