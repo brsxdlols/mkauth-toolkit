@@ -12,7 +12,7 @@ function mt_demo($config,$kind,$transport='mt_api') {
           'recovered'=>"🧪 TESTE — CLIENTE VOLTOU\nNome: Cliente Demonstração\nLogin: cliente_teste\nContrato: ✅ Ativo\nTempo offline: 4 minutos (simulado).\nResposta ao teste de desconexão, sem alterar clientes reais.",
           'mass'=>"🧪 TESTE — QUEDA MASSIVA\n🚨 10 clientes desconectaram em até 2 minutos (simulado).\nOcorrência de demonstração; nenhum cliente real foi alterado.",
           'partial'=>"🧪 TESTE — RECUPERAÇÃO PARCIAL\n🟡 8 de 10 clientes voltaram.\nAinda offline: 2 (simulado).\nAcompanhamento da ocorrência de demonstração.",
-          'resolved'=>"🧪 TESTE — OCORRÊNCIA NORMALIZADA\n✅ 10/10 clientes recuperados.\nDuração: 12 minutos (simulado).\nEncerramento da ocorrência de demonstração."
+          'resolved'=>"🧪 TESTE — OCORRÊNCIA ENCERRADA\n✅ Voltaram: 8 de 10 clientes (80%).\nAinda offline: 2 (simulado).\nCritério: pelo menos 80% recuperados por 2 minutos.\nEncerramento da ocorrência de demonstração."
         );
         $now=time();$sample=array('name'=>'Cliente Demonstração','login'=>'cliente_teste','blocked'=>false,'cto'=>'342','port'=>'01','district'=>'Jardim Leone (TESTE)','street'=>'Rua de Demonstração','number'=>'123','connected_epoch'=>$now-5,'disconnected_epoch'=>$now-245);
         $texts['connect']="🧪 TESTE — DADOS FICTÍCIOS\n".mt_message(array('kind'=>'connect','at'=>$now,'client'=>$sample),$config);

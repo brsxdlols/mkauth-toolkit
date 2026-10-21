@@ -65,6 +65,14 @@ try {
     $minutes=filter_var(isset($_POST['window_minutes'])?$_POST['window_minutes']:2,FILTER_VALIDATE_INT);
     if($threshold===false||$threshold<1||$threshold>10000||$minutes===false||$minutes<1||$minutes>30)throw new RuntimeException('Use quantidade entre 1 e 10000 e intervalo entre 1 e 30 minutos.');
     $candidate['threshold']=$threshold;$candidate['window_minutes']=$minutes;
+    $mode=isset($_POST['trigger_mode'])?(string)$_POST['trigger_mode']:$candidate['trigger_mode'];
+    if(!in_array($mode,array('count','percent'),true))throw new RuntimeException('Selecione quantidade ou percentual para disparar.');
+    $levels=mt_mass_levels(isset($_POST['mass_levels'])?$_POST['mass_levels']:$candidate['mass_levels']);
+    if($mode==='percent'&&!$levels)throw new RuntimeException('Marque pelo menos um nível de queda.');
+    $recovery=filter_var(isset($_POST['recovery_percent'])?$_POST['recovery_percent']:$candidate['recovery_percent'],FILTER_VALIDATE_INT);
+    if(!in_array($recovery,array(70,80,90,100),true))throw new RuntimeException('Recuperação deve ser 70%, 80%, 90% ou 100%.');
+    $candidate['trigger_mode']=$mode;$candidate['mass_levels']=$levels;$candidate['recovery_percent']=$recovery;
+
     $verified=mt_read('verified');$matches=isset($verified['fingerprint'])&&hash_equals($verified['fingerprint'],mt_fingerprint($candidate));
     // Saving preferences does not require a prior integration test.
     if($candidate['token']!=='')mt_token($candidate['token']);
