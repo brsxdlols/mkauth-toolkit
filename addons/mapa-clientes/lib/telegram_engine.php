@@ -65,7 +65,7 @@ function mt_settings_message($c) {
         ."\nEnvio: ".($c['enabled']?'ATIVADO':'DESATIVADO')
         ."\nAlertas: ".($types?implode(', ',$types):'Nenhum selecionado')
         ."\nContratos individuais: ".$filters[mt_customer_filter(isset($c['customer_filter'])?$c['customer_filter']:'all')]
-        .($c['mass']?"\nQueda massiva: ".$c['threshold'].' clientes em '.$c['window_minutes'].' min (ativos e bloqueados)'."\nRetornos: em lotes de ".$c['threshold'].'; normalização total sempre enviada':'')
+        .($c['mass']?"\nQueda massiva: ".$c['threshold'].' clientes em '.$c['window_minutes'].' min (ativos e bloqueados)'."\nRetornos: em lotes de ".$c['threshold'].'; encerra com 80% recuperados por 2 min':'')
         ."\nSalvo em: ".$clock;
 }
 function mt_notify_saved($before,$after,$transport='mt_api') {
@@ -178,10 +178,11 @@ function mt_message($event,$config) {
     $date=function($epoch)use($zone){return (new DateTimeImmutable('@'.$epoch))->setTimezone(new DateTimeZone($zone));};
     if($event['kind']==='mass')return mt_mass_message($event,$config,$date);
     if($event['kind']==='mass_update') {
-        $full=$event['recovered']===$event['total'];$remaining=$event['total']-$event['recovered'];
-        return ($full?'✅ QUEDA MASSIVA NORMALIZADA':'🟡 ATUALIZAÇÃO DA QUEDA MASSIVA')
+        $full=!empty($event['resolved']);$remaining=$event['total']-$event['recovered'];
+        return ($full?'✅ QUEDA MASSIVA ENCERRADA — RECUPERAÇÃO CONFIRMADA':'🟡 ATUALIZAÇÃO DA QUEDA MASSIVA')
             ."\nVoltaram: ".$event['recovered'].' de '.$event['total'].' clientes'
             ."\nAinda offline: ".$remaining.' clientes'
+            .($full?"\nRecuperação: ".number_format(100*$event['recovered']/max(1,$event['total']),1,',','')."%\nCritério: ao menos 80% recuperados por 2 minutos.\nAcompanhamento desta ocorrência encerrado; os clientes restantes continuam offline.":'')
             ."\n⏱ Acompanhamento: ".intdiv(max(0,$event['at']-$event['started_at']),60).' min'
             ."\n🕒 Atualização: ".$date($event['at'])->format('H:i:s')."\n📅 Data: ".$date($event['at'])->format('d/m/Y');
     }

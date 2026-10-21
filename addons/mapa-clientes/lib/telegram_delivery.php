@@ -24,7 +24,7 @@ function mt_send_event($event,$config,$transport='mt_api') {
     if($event['kind']==='mass_update') {
         $store['mass_open'][$massKey]['sequence']=(isset($massIncident['sequence'])?$massIncident['sequence']:0)+1;
         $store['mass_open'][$massKey]['recovered_keys']=$event['recovered_keys'];$store['mass_open'][$massKey]['updated_at']=time();
-        if($event['recovered']===$event['total'])unset($store['mass_open'][$massKey]);
+        if(!empty($event['resolved']))unset($store['mass_open'][$massKey]);
     }
     if(isset($store['mass_open'])&&count($store['mass_open'])>500)$store['mass_open']=array_slice($store['mass_open'],-500,null,true);
     $replyTo=$event['kind']==='connect'&&$incident&&(int)$incident['event_at']<=(int)$event['at']?$incident['message_id']:null;
@@ -39,19 +39,32 @@ function mt_send_event($event,$config,$transport='mt_api') {
 function mt_mass_updates($clients,$config,$now) {
     if(empty($config['mass']))return array();
     $store=mt_read('delivery');$open=isset($store['mass_open'])?$store['mass_open']:array();$events=array();$fingerprint=mt_fingerprint($config);
-    foreach($open as $incident) {
+    foreach($open as $incidentKey=>$incident) {
         if($incident['fingerprint']!==$fingerprint)continue;
         $keys=$incident['client_keys'];$recovered=array();$inScope=true;
         foreach($keys as $key){if(!isset($clients[$key])){$inScope=false;break;}if(!empty($clients[$key]['online']))$recovered[]=$key;}
-        if(!$inScope)continue;
+        if(!$inScope){unset($store['mass_open'][$incidentKey]['recovery_since'],$store['mass_open'][$incidentKey]['recovery_sample']);continue;}
         sort($recovered);$before=$incident['recovered_keys'];sort($before);
+        $resolved=false;$total=count($keys);$count=count($recovered);
+        // Require 80% online for two minutes of continuous authorized samples.
+        // A missing sample, restart gap or fall below the target restarts the timer.
+        if($total>0&&$count*100 >= $total*80){
+            $since=isset($incident['recovery_since'])?(int)$incident['recovery_since']:$now;
+            $sample=isset($incident['recovery_sample'])?(int)$incident['recovery_sample']:0;
+            if(!$sample||$now<$sample||$now-$sample>60)$since=$now;
+            $store['mass_open'][$incidentKey]['recovery_since']=$since;
+            $store['mass_open'][$incidentKey]['recovery_sample']=$now;
+            $resolved=$now-$since>=120;
+            if(!$resolved)continue;
+        }else{unset($store['mass_open'][$incidentKey]['recovery_since'],$store['mass_open'][$incidentKey]['recovery_sample']);}
         $batch=max(1,(int)$config['threshold']);
         // Notify only a new recovery milestone, never a decrease or one-client flap.
-        if(count($recovered)!==count($keys)&&intdiv(count($recovered),$batch)<=intdiv(count($before),$batch))continue;
-        if($before===$recovered)continue;
-        $events[]=array('id'=>hash('sha256',$incident['incident_id'].'|recovery|'.(isset($incident['sequence'])?$incident['sequence']:0).'|'.implode('|',$recovered)),
+        if(!$resolved&&intdiv(count($recovered),$batch)<=intdiv(count($before),$batch))continue;
+        if(!$resolved&&$before===$recovered)continue;
+        $events[]=array('id'=>hash('sha256',$incident['incident_id'].'|recovery|'.(isset($incident['sequence'])?$incident['sequence']:0).'|'.($resolved?'resolved':'partial').'|'.implode('|',$recovered)),
             'kind'=>'mass_update','incident_id'=>$incident['incident_id'],'at'=>$now,'started_at'=>$incident['started_at'],
-            'client_keys'=>$keys,'recovered_keys'=>$recovered,'total'=>count($keys),'recovered'=>count($recovered));
+            'resolved'=>$resolved,'recovery_percent'=>80,'client_keys'=>$keys,'recovered_keys'=>$recovered,'total'=>count($keys),'recovered'=>count($recovered));
     }
+    if($store!==mt_read('delivery'))mt_write('delivery',$store);
     return $events;
 }
