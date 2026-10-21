@@ -20,7 +20,7 @@ function mt_send_event($event,$config,$transport='mt_api') {
     $id=(int)$message['message_id'];
     if($event['kind']==='disconnect'&&(!$incident||(int)$incident['event_at']<=(int)$event['at']))$store['open'][$key]=array('message_id'=>$id,'event_at'=>$event['at'],'event_id'=>$event['id']);
     if($event['kind']==='connect'&&$incident&&(int)$incident['event_at']<=(int)$event['at'])unset($store['open'][$key]);
-    if($event['kind']==='mass')$store['mass_open'][$massKey]=array('message_id'=>$id,'incident_id'=>$event['id'],'fingerprint'=>$fingerprint,'started_at'=>$event['at'],'client_keys'=>array_values(array_unique($event['client_keys'])),'recovered_keys'=>array(),'updated_at'=>time(),'sequence'=>0);
+    if($event['kind']==='mass')$store['mass_open'][$massKey]=array('message_id'=>$id,'incident_id'=>$event['id'],'fingerprint'=>$fingerprint,'started_at'=>$event['at'],'client_keys'=>array_values(array_unique($event['client_keys'])),'recovered_keys'=>array(),'updated_at'=>time(),'sequence'=>0,'recovery_percent'=>mt_recovery_percent($event+$config),'level_percent'=>isset($event['level_percent'])?$event['level_percent']:null);
     if($event['kind']==='mass_update') {
         $store['mass_open'][$massKey]['sequence']=(isset($massIncident['sequence'])?$massIncident['sequence']:0)+1;
         $store['mass_open'][$massKey]['recovered_keys']=$event['recovered_keys'];$store['mass_open'][$massKey]['updated_at']=time();
@@ -45,10 +45,10 @@ function mt_mass_updates($clients,$config,$now) {
         foreach($keys as $key){if(!isset($clients[$key])){$inScope=false;break;}if(!empty($clients[$key]['online']))$recovered[]=$key;}
         if(!$inScope){unset($store['mass_open'][$incidentKey]['recovery_since'],$store['mass_open'][$incidentKey]['recovery_sample']);continue;}
         sort($recovered);$before=$incident['recovered_keys'];sort($before);
-        $resolved=false;$total=count($keys);$count=count($recovered);
+        $resolved=false;$total=count($keys);$count=count($recovered);$target=mt_recovery_percent($incident);
         // Require 80% online for two minutes of continuous authorized samples.
         // A missing sample, restart gap or fall below the target restarts the timer.
-        if($total>0&&$count*100 >= $total*80){
+        if($total>0&&$count*100 >= $total*$target){
             $since=isset($incident['recovery_since'])?(int)$incident['recovery_since']:$now;
             $sample=isset($incident['recovery_sample'])?(int)$incident['recovery_sample']:0;
             if(!$sample||$now<$sample||$now-$sample>60)$since=$now;
@@ -63,7 +63,7 @@ function mt_mass_updates($clients,$config,$now) {
         if(!$resolved&&$before===$recovered)continue;
         $events[]=array('id'=>hash('sha256',$incident['incident_id'].'|recovery|'.(isset($incident['sequence'])?$incident['sequence']:0).'|'.($resolved?'resolved':'partial').'|'.implode('|',$recovered)),
             'kind'=>'mass_update','incident_id'=>$incident['incident_id'],'at'=>$now,'started_at'=>$incident['started_at'],
-            'resolved'=>$resolved,'recovery_percent'=>80,'client_keys'=>$keys,'recovered_keys'=>$recovered,'total'=>count($keys),'recovered'=>count($recovered));
+            'resolved'=>$resolved,'recovery_percent'=>$target,'level_percent'=>isset($incident['level_percent'])?$incident['level_percent']:null,'client_keys'=>$keys,'recovered_keys'=>$recovered,'total'=>count($keys),'recovered'=>count($recovered));
     }
     if($store!==mt_read('delivery'))mt_write('delivery',$store);
     return $events;

@@ -9,7 +9,14 @@ function mt_write($name,$value) {
     if($json===false||file_put_contents($tmp,$json,LOCK_EX)===false||!rename($tmp,$dir.'/'.$name.'.json')){@unlink($tmp);throw new RuntimeException('Falha ao salvar Telegram.');}
 }
 function mt_config_lock() { $lock=@fopen(mt_dir().'/config.lock','c');if(!$lock)throw new RuntimeException('Servidor sem permissão para salvar o Telegram. Atualize o addon para corrigir as permissões e o AppArmor.');if(!flock($lock,LOCK_EX|LOCK_NB)){fclose($lock);throw new RuntimeException('Outra configuração está sendo salva. Aguarde e tente novamente.');}return $lock;}
-function mt_defaults() { return array('enabled'=>false,'token'=>'','chat_id'=>'','chat_title'=>'','connect'=>false,'disconnect'=>false,'mass'=>true,'threshold'=>10,'window_minutes'=>2,'timezone'=>'America/Sao_Paulo','customer_filter'=>'all','operator'=>'','revision'=>''); }
+function mt_defaults() { return array('enabled'=>false,'token'=>'','chat_id'=>'','chat_title'=>'','connect'=>false,'disconnect'=>false,'mass'=>true,'threshold'=>10,'trigger_mode'=>'count','mass_levels'=>array(10),'recovery_percent'=>80,'window_minutes'=>2,'timezone'=>'America/Sao_Paulo','customer_filter'=>'all','operator'=>'','revision'=>''); }
+function mt_mass_levels($value){
+    if(is_string($value))$value=$value===''?array():explode(',',$value);
+    if(!is_array($value)||count($value)>5)throw new RuntimeException('Selecione níveis válidos de queda.');
+    $out=array();foreach($value as $v){$n=filter_var($v,FILTER_VALIDATE_INT);if($n===false||!in_array($n,array(10,20,50,70,80),true))throw new RuntimeException('Níveis de queda: 10%, 20%, 50%, 70% e 80%.');$out[$n]=$n;}
+    sort($out);return array_values($out);
+}
+function mt_recovery_percent($c){$n=isset($c['recovery_percent'])?(int)$c['recovery_percent']:80;return in_array($n,array(70,80,90,100),true)?$n:80;}
 function mt_config() { return array_merge(mt_defaults(),mt_read('config')); }
 function mt_fingerprint($c) { return hash('sha256',$c['token'].'|'.$c['chat_id']); }
 function mt_token($token) { if(!preg_match('/^[0-9]{5,16}:[A-Za-z0-9_-]{20,120}$/D',$token))throw new RuntimeException('Informe um token válido do BotFather.'); return $token; }
@@ -65,7 +72,7 @@ function mt_settings_message($c) {
         ."\nEnvio: ".($c['enabled']?'ATIVADO':'DESATIVADO')
         ."\nAlertas: ".($types?implode(', ',$types):'Nenhum selecionado')
         ."\nContratos individuais: ".$filters[mt_customer_filter(isset($c['customer_filter'])?$c['customer_filter']:'all')]
-        .($c['mass']?"\nQueda massiva: ".$c['threshold'].' clientes em '.$c['window_minutes'].' min (ativos e bloqueados)'."\nRetornos: em lotes de ".$c['threshold'].'; encerra com 80% recuperados por 2 min':'')
+        .($c['mass']?"\nQueda massiva: ".((isset($c['trigger_mode'])&&$c['trigger_mode']==='percent')?'níveis '.implode('%, ',mt_mass_levels($c['mass_levels'])).'% da base monitorada':$c['threshold'].' clientes').' em '.$c['window_minutes'].' min'."\nRetornos: lotes de ".$c['threshold'].'; encerra com '.mt_recovery_percent($c).'% recuperados por 2 min':'')
         ."\nSalvo em: ".$clock;
 }
 function mt_notify_saved($before,$after,$transport='mt_api') {
@@ -97,7 +104,7 @@ function mt_filter_clients($clients,$config) {
 // Pure transition detection: initial samples are a baseline, never a mass outage.
 function mt_detect($previous,$clients,$config,$now) {
     if(empty($previous['baseline'])||$now-(int)$previous['sample_at']>300)return array('baseline'=>true,'sample_at'=>$now,'known'=>$clients,'pending'=>array(),'recent'=>array(),'mass_ids'=>array(),'events'=>array());
-    $known=$previous['known'];$pending=isset($previous['pending'])?$previous['pending']:array();$recent=isset($previous['recent'])?$previous['recent']:array();$massIds=isset($previous['mass_ids'])?$previous['mass_ids']:array();$events=array();
+    $known=$previous['known'];$pending=isset($previous['pending'])?$previous['pending']:array();$recent=isset($previous['recent'])?$previous['recent']:array();$massIds=isset($previous['mass_ids'])?$previous['mass_ids']:array();$percentSeen=isset($previous['percent_seen'])?$previous['percent_seen']:array();$events=array();
     foreach($clients as $id=>$client) {
         if(!isset($known[$id])){$known[$id]=$client;continue;}
         if($known[$id]['online']===$client['online']){unset($pending[$id]);$client['offline_since']=isset($known[$id]['offline_since'])?$known[$id]['offline_since']:null;$known[$id]=$client;continue;}
@@ -120,11 +127,26 @@ function mt_detect($previous,$clients,$config,$now) {
     foreach(array_keys($known) as $id)if(!isset($clients[$id])){unset($known[$id],$pending[$id]);}
     $validIds=array();foreach($recent as $id=>$event){if($now-$event['at']>(int)$config['window_minutes']*60||!isset($clients[$event['client_key']]))unset($recent[$id]);else $validIds[$event['id']]=true;}
     $massIds=array_intersect_key($massIds,$validIds);$unreported=array();foreach($recent as $event)if(!isset($massIds[$event['id']]))$unreported[$event['id']]=$event;
-    if(!empty($config['mass'])&&count($unreported)>=(int)$config['threshold']) {
+    $percentageMode=isset($config['trigger_mode'])&&$config['trigger_mode']==='percent';
+    if(!empty($config['mass'])&&$percentageMode){
+        // Only newly disconnected clients still offline count towards the current window.
+        // The base includes active and blocked contracts inside the authorized scope.
+        $affected=array();foreach($recent as $e)if(empty($clients[$e['client_key']]['online']))$affected[$e['id']]=$e;
+        $base=count($clients);$ids=array_keys($affected);sort($ids);$keys=array();foreach($affected as $e)$keys[]=$e['client_key'];
+        foreach(mt_mass_levels(isset($config['mass_levels'])?$config['mass_levels']:array(10)) as $level){
+            $seen=isset($percentSeen[$level])?array_values(array_intersect($percentSeen[$level],array_keys($validIds))):array();
+            if($base>0&&count($affected)*100 >= $base*$level){
+                if(!array_intersect($seen,$ids))array_unshift($events,array('id'=>hash('sha256','percent|'.$level.'|'.implode('|',$ids)),'at'=>$now,'kind'=>'mass','count'=>count($affected),'client_keys'=>$keys,'outages'=>array_values($affected),'level_percent'=>$level,'base_count'=>$base,'recovery_percent'=>mt_recovery_percent($config)));
+                $seen=array_values(array_unique(array_merge($seen,$ids)));
+            }
+            $percentSeen[$level]=$seen;
+        }
+    }
+    if(!empty($config['mass'])&&!$percentageMode&&count($unreported)>=(int)$config['threshold']) {
         $ids=array_keys($unreported);sort($ids);$keys=array();foreach($unreported as $e)$keys[]=$e['client_key'];array_unshift($events,array('id'=>hash('sha256',implode('|',$ids)),'at'=>$now,'kind'=>'mass','count'=>count($unreported),'client_keys'=>$keys,'outages'=>array_values($unreported)));
         foreach($unreported as $id=>$event)$massIds[$id]=true;
     }
-    return array('baseline'=>true,'sample_at'=>$now,'known'=>$known,'pending'=>$pending,'recent'=>$recent,'mass_ids'=>$massIds,'events'=>$events);
+    return array('baseline'=>true,'sample_at'=>$now,'known'=>$known,'pending'=>$pending,'recent'=>$recent,'mass_ids'=>$massIds,'percent_seen'=>$percentSeen,'events'=>$events);
 }
 function mt_recorded_at($event) {
     if($event['kind']==='mass')return null;
@@ -154,6 +176,7 @@ function mt_mass_message($event,$config,$date) {
     }
     uasort($groups,function($a,$b){return $b['count']-$a['count'];});
     $text='🚨 QUEDA MASSIVA — '.$event['count'].' CLIENTES';
+    if(isset($event['level_percent']))$text.="\nNível: ".$event['level_percent'].'% · Base monitorada: '.$event['base_count'].' clientes'."\nQueda detectada: ".number_format(100*$event['count']/max(1,$event['base_count']),1,',','').'%';
     if($outages)$text.="\n✅ Ativos: ".$active.' · 🔒 Bloqueados: '.$blocked;
     $i=0;$remaining=0;
     foreach($groups as $district=>$group) {
@@ -180,9 +203,10 @@ function mt_message($event,$config) {
     if($event['kind']==='mass_update') {
         $full=!empty($event['resolved']);$remaining=$event['total']-$event['recovered'];
         return ($full?'✅ QUEDA MASSIVA ENCERRADA — RECUPERAÇÃO CONFIRMADA':'🟡 ATUALIZAÇÃO DA QUEDA MASSIVA')
+            .(isset($event['level_percent'])?"\nNível da ocorrência: ".$event['level_percent'].'%':'')
             ."\nVoltaram: ".$event['recovered'].' de '.$event['total'].' clientes'
             ."\nAinda offline: ".$remaining.' clientes'
-            .($full?"\nRecuperação: ".number_format(100*$event['recovered']/max(1,$event['total']),1,',','')."%\nCritério: ao menos 80% recuperados por 2 minutos.\nAcompanhamento desta ocorrência encerrado; os clientes restantes continuam offline.":'')
+            .($full?"\nRecuperação: ".number_format(100*$event['recovered']/max(1,$event['total']),1,',','')."%\nCritério: ao menos ".(isset($event['recovery_percent'])?$event['recovery_percent']:80)."% recuperados por 2 minutos.\nAcompanhamento desta ocorrência encerrado; os clientes restantes continuam offline.":'')
             ."\n⏱ Acompanhamento: ".intdiv(max(0,$event['at']-$event['started_at']),60).' min'
             ."\n🕒 Atualização: ".$date($event['at'])->format('H:i:s')."\n📅 Data: ".$date($event['at'])->format('d/m/Y');
     }
