@@ -39,10 +39,12 @@
   function finish(){
    if(!start||!last){cancel();return;}
    var valid=Math.abs(last.x-start.x)>=5&&Math.abs(last.y-start.y)>=5;
-   if(valid){var shape=preview;preview=null;commitRegion(shape,shape.getBounds());onChange(bounds,revealing);}
+   if(valid){var shape=preview;preview=null;commitRegion(shape,{contains:function(point){return shape.getBounds().contains(point);}});addRectangleHandles(shape);onChange(bounds,revealing);}
    cancel();status();
   }
   function commitRegion(shape,region){selectedLayers.push(shape);regions.push(region);bounds={contains:function(point){return regions.some(function(part){return part.contains(point);});}};}
+  function rectangleCorners(shape){var b=shape.getBounds();return [b.getNorthWest(),b.getNorthEast(),b.getSouthEast(),b.getSouthWest()];}
+  function addRectangleHandles(shape){var ring=rectangleCorners(shape),handles=ring.map(function(ll){return L.circleMarker(ll,{radius:5,color:'#1769aa',fillColor:'#fff',fillOpacity:1,interactive:false}).addTo(map);});editGroups.push({rectangle:true,ring:ring,shape:shape,handles:handles});}
   function clearVertices(){vertexLayers.forEach(function(layer){map.removeLayer(layer);});vertexLayers=[];vertices=[];}
   function release(notify){editing=null;panStart=null;panMoved=false;spaceHeld=false;cancel();clearVertices();polygonMode=false;restore();endReveal(notify);status();}
   function polygonContains(ring,point){
@@ -81,14 +83,14 @@
    blockClick=false;panMoved=false;
    if(event.button!==0||event.target.closest('.leaflet-control,.leaflet-popup'))return;
    var pos=point(event),groups=editGroups.slice();if(polygonMode)groups.push({ring:vertices,shape:preview,handles:vertexLayers,draft:true});
-   for(var g=groups.length-1;g>=0;g--){for(var i=0;i<groups[g].ring.length;i++){if(map.latLngToContainerPoint(groups[g].ring[i]).distanceTo(pos)<=9){editing={group:groups[g],index:i,start:pos,moved:false};arm();event.preventDefault();event.stopImmediatePropagation();return;}}}
+   for(var g=groups.length-1;g>=0;g--){for(var i=0;i<groups[g].ring.length;i++){if(map.latLngToContainerPoint(groups[g].ring[i]).distanceTo(pos)<=9){editing={group:groups[g],index:i,opposite:groups[g].rectangle?groups[g].ring[(i+2)%4]:null,start:pos,moved:false};arm();event.preventDefault();event.stopImmediatePropagation();return;}}}
    if(polygonMode){if(spaceHeld)arm();else{panStart=pos;panMoved=false;}return;}
    if(!armed||event.button!==0||event.target.closest('.leaflet-control,.leaflet-popup'))return;
    event.preventDefault();event.stopImmediatePropagation();beginReveal();cancel();start=last=point(event);
    preview=L.rectangle(L.latLngBounds(map.containerPointToLatLng(start),map.containerPointToLatLng(start)),{color:'#1769aa',weight:2,fillColor:'#2684ff',fillOpacity:0.15,interactive:false}).addTo(map);
   }
   function move(event){
-   if(editing){event.preventDefault();event.stopPropagation();var pos=point(event);if(pos.distanceTo(editing.start)<3&&!editing.moved)return;editing.moved=true;var group=editing.group,ll=map.containerPointToLatLng(pos);group.ring[editing.index]=ll;if(group.draft)vertices=group.ring;group.handles[editing.index].setLatLng(ll);if(group.shape)group.shape.setLatLngs(group.ring);if(!group.draft)onChange(bounds,revealing);return;}
+   if(editing){event.preventDefault();event.stopPropagation();var pos=point(event);if(pos.distanceTo(editing.start)<3&&!editing.moved)return;editing.moved=true;var group=editing.group,ll=map.containerPointToLatLng(pos);if(group.rectangle){group.shape.setBounds(L.latLngBounds(editing.opposite,ll));group.ring=rectangleCorners(group.shape);group.handles.forEach(function(handle,index){handle.setLatLng(group.ring[index]);});onChange(bounds,revealing);return;}group.ring[editing.index]=ll;if(group.draft)vertices=group.ring;group.handles[editing.index].setLatLng(ll);if(group.shape)group.shape.setLatLngs(group.ring);if(!group.draft)onChange(bounds,revealing);return;}
    if(panStart&&!spaceHeld){if(point(event).distanceTo(panStart)>=5)panMoved=true;return;}
    if(!armed||!start)return;event.preventDefault();event.stopPropagation();update(event);}
   function up(event){
