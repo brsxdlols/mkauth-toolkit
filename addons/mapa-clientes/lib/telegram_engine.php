@@ -1,12 +1,21 @@
 <?php
 // Private state is deliberately outside the addon/document root.
 function mt_dir() { $p=getenv('MKAUTH_MAP_TELEGRAM_STATE'); return $p ? rtrim($p,'/') : '/var/lib/mkauth-map-telegram'; }
-function mt_read($name, $default=array()) { $p=mt_dir().'/'.$name.'.json'; if(!is_file($p))return $default; $v=json_decode((string)file_get_contents($p),true); if(!is_array($v))throw new RuntimeException('Estado do Telegram inválido.'); return $v; }
+function mt_read($name, $default=array()) {
+    $p=mt_dir().'/'.$name.'.json';if(!is_file($p))return $default;
+    $raw=@file_get_contents($p);if($raw===false)throw new RuntimeException('Sem permissão para ler o estado do Telegram.');
+    $v=json_decode($raw,true);if(is_array($v))return $v;
+    // Samples and the transient queue can be rebuilt; credentials and delivery history must fail closed.
+    if(in_array($name,array('runtime','transitions'),true)){error_log('Mapa Telegram: estado temporario invalido em '.$name.'; reconstruindo na proxima coleta.');return $default;}
+    throw new RuntimeException($name==='config'?'Configuracao do Telegram invalida. Restaure um backup antes de salvar.':'Estado do Telegram invalido.');
+}
 function mt_write($name,$value) {
-    $dir=mt_dir(); if(!is_dir($dir)||!is_writable($dir))throw new RuntimeException('Pasta privada do Telegram indisponível.');
+    $dir=mt_dir();if(!is_dir($dir)||!is_writable($dir))throw new RuntimeException('Pasta privada do Telegram indisponível.');
+    $json=json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+    if($json===false)throw new RuntimeException('Falha ao codificar o estado do Telegram.');
     $tmp=tempnam($dir,'.telegram-');if($tmp===false)throw new RuntimeException('Falha ao salvar Telegram.');
-    chmod($tmp,0600);$json=json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-    if($json===false||file_put_contents($tmp,$json,LOCK_EX)===false||!rename($tmp,$dir.'/'.$name.'.json')){@unlink($tmp);throw new RuntimeException('Falha ao salvar Telegram.');}
+    // A short write (for example a full disk) must never replace the last valid state.
+    if(!chmod($tmp,0600)||@file_put_contents($tmp,$json,LOCK_EX)!==strlen($json)||@file_get_contents($tmp)!==$json||!rename($tmp,$dir.'/'.$name.'.json')){@unlink($tmp);throw new RuntimeException('Falha ao salvar Telegram. Estado anterior preservado; verifique o espaco em disco.');}
 }
 function mt_config_lock() { $lock=@fopen(mt_dir().'/config.lock','c');if(!$lock)throw new RuntimeException('Servidor sem permissão para salvar o Telegram. Atualize o addon para corrigir as permissões e o AppArmor.');if(!flock($lock,LOCK_EX|LOCK_NB)){fclose($lock);throw new RuntimeException('Outra configuração está sendo salva. Aguarde e tente novamente.');}return $lock;}
 function mt_defaults() { return array('enabled'=>false,'token'=>'','chat_id'=>'','chat_title'=>'','connect'=>false,'disconnect'=>false,'mass'=>true,'threshold'=>10,'trigger_mode'=>'count','mass_levels'=>array(10),'recovery_percent'=>80,'window_minutes'=>2,'timezone'=>'America/Sao_Paulo','customer_filter'=>'all','operator'=>'','revision'=>''); }
